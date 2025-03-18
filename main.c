@@ -3,15 +3,25 @@
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
-#include <ctype.h>
+#include <string.h>
 #include <errno.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
+#define KEWETEXT_VERSION "0.0.1"
+
+enum editorKey {
+    ARROW_LEFT = 1000,
+    ARROW_RIGHT,
+    ARROW_UP,
+    ARROW_DOWN
+};
 
 //DATA
 
 //Stores original terminal settings
 struct editorConfig {
+    int cursorx;
+    int cursory;
     int screen_rows;
     int screen_cols;
     struct termios orig_termios;
@@ -58,7 +68,7 @@ void enableRawMode() {
     }
 }
 
-char editorReadKey() {
+int editorReadKey() {
     //Reads keys from the terminal
     int readnum;
     char c;
@@ -67,7 +77,27 @@ char editorReadKey() {
             die("read");
         }
     }
-    return c;
+
+    if (c == '\x1b') {
+        char seq[3];
+        if (read(STDIN_FILENO, &seq[0], 1) != 1) {
+            return '\x1b';
+        }
+        if (read(STDIN_FILENO, &seq[1], 1) != 1) {
+            return '\x1b';
+        }
+        if (seq[0] == '[') {
+            switch (seq[1]) {
+                case 'A': return ARROW_UP;
+                case 'B': return ARROW_DOWN;
+                case 'C': return ARROW_RIGHT;
+                case 'D': return ARROW_LEFT;
+            }
+        }
+        return '\x1b';
+    } else {
+        return c;
+    }
 }
 
 int getCursorPosition(int* rows, int* cols) {
@@ -117,32 +147,111 @@ int getWindowSize(int* rows, int* cols) {
     }
 }
 
+//APPEND BUFFER
+struct appendbuf {
+    char* buffer;
+    int length;
+};
+
+#define APPENDBUF_INIT { NULL, 0 }
+
+void appendBufAppend(struct appendbuf* b, const char* str, int length) {
+    char* newBuffer = realloc(b->buffer, b->length + length);
+    if (newBuffer == NULL) {
+        return;
+    }
+
+    memcpy(&newBuffer[b->length], str, length);
+    b->buffer = newBuffer;
+    b->length += length;
+}
+
+void appendBufFree(struct appendbuf* b) {
+    free(b->buffer);
+}
+
 //OUTPUT
 
-void drawRows() {
+void drawRows(struct appendbuf* abuf) {
     int i;
     for (i = 0; i < E.screen_rows; ++i) {
-        write(STDOUT_FILENO, "-)", 2);
+        if (i == E.screen_rows / 3) {
+            char welcome[80];
+            int welcomLength = snprintf(welcome, sizeof(welcome),
+                "Kewetext Editor -- version %s", KEWETEXT_VERSION);
+            if (welcomLength > E.screen_cols) {
+                welcomLength = E.screen_cols;
+            }
+            int padding = (E.screen_cols - welcomLength) / 2;
+            if (padding) {
+                appendBufAppend(abuf, "-)", 2);
+                padding -= 2;
+            }
+            while (padding--) {
+                appendBufAppend(abuf, " ", 1);
+            }
+
+            appendBufAppend(abuf, welcome, welcomLength);
+        } else {
+            appendBufAppend(abuf, "-)", 2);
+        }
+        appendBufAppend(abuf, "\x1b[K", 3);
 
         if (i < E.screen_rows - 1) {
-            write(STDOUT_FILENO, "\r\n", 2);
+            appendBufAppend(abuf, "\r\n", 2);
         }
     }
 }
 
 void refreshScreen() {
     //Remember the buff is seen in formating terminal text
-    write(STDOUT_FILENO, "\x1b[2J", 4);
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    struct appendbuf abuf = APPENDBUF_INIT;
 
-    drawRows();
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    appendBufAppend(&abuf, "\x1b[?25l", 6);
+    appendBufAppend(&abuf, "\x1b[H", 3);
+
+    drawRows(&abuf);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cursory + 1, E.cursorx + 1);
+    appendBufAppend(&abuf, buf, strlen(buf));
+
+    appendBufAppend(&abuf, "\x1b[?25h", 6);
+
+    write(STDOUT_FILENO, abuf.buffer, abuf.length);
+    appendBufFree(&abuf);
 }
 
 //INPUT
+void moveCursor(int key) {
+    switch (key) {
+        case ARROW_UP:
+            if (E.cursory != 0) {
+                E.cursory--;
+            }
+            break;
+        case ARROW_LEFT:
+            if (E.cursorx != 0) {
+                E.cursorx--;
+            }
+            break;
+        case ARROW_DOWN:
+            if (E.cursory != E.screen_rows - 1) {
+                E.cursory++;
+            }
+            break;
+        case ARROW_RIGHT:
+            if (E.cursorx != E.screen_cols - 1) {
+                E.cursorx++;
+            }
+            break;
+    }
+}
+
+
 void processKeyPress() {
     //Reads and performs functions for special control keys
-    char c = editorReadKey();
+    int c = editorReadKey();
 
     switch (c) {
         case CTRL_KEY('Q'):
@@ -150,12 +259,22 @@ void processKeyPress() {
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
             break;
+        case ARROW_UP:
+        case ARROW_LEFT:
+        case ARROW_DOWN:
+        case ARROW_RIGHT:
+            moveCursor(c);
+            break;
     }
 }
 
 //MAIN CODE
 
 void startEditor() {
+
+    E.cursorx = 0;
+    E.cursory = 0;
+
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
     }
