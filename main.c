@@ -13,7 +13,12 @@ enum editorKey {
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
-    ARROW_DOWN
+    ARROW_DOWN,,
+    DELETE,
+    PAGE_UP,
+    PAGE_DOWN,
+    HOME,
+    END
 };
 
 //DATA
@@ -87,11 +92,35 @@ int editorReadKey() {
             return '\x1b';
         }
         if (seq[0] == '[') {
+            if (seq[1] >= '0' && seq[1] <= '9') {
+                if (read(STDIN_FILENO, &seq[2], 1) != 1) {
+                    return '\x1b';
+                }
+                if (seq[2] == '~') {
+                    switch (seq[1]) {
+                        case '1': return HOME;
+                        case '3': return DELETE;
+                        case '4': return END;
+                        case '5': return PAGE_UP;
+                        case '6': return PAGE_DOWN;
+                        case '7': return HOME;
+                        case '8': return END;
+                    }
+                }
+            } else {
+                switch (seq[1]) {
+                    case 'A': return ARROW_UP;
+                    case 'B': return ARROW_DOWN;
+                    case 'C': return ARROW_RIGHT;
+                    case 'D': return ARROW_LEFT;
+                    case 'H': return HOME;
+                    case 'F': return END;
+                }
+            }
+        } else if (seq[0] == 'O') {
             switch (seq[1]) {
-                case 'A': return ARROW_UP;
-                case 'B': return ARROW_DOWN;
-                case 'C': return ARROW_RIGHT;
-                case 'D': return ARROW_LEFT;
+                case 'H': return HOME;
+                case 'F': return END;
             }
         }
         return '\x1b';
@@ -259,6 +288,23 @@ void processKeyPress() {
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
             break;
+
+        case HOME:
+            E.cursorx = 0;
+            break;
+        case END:
+            E.cursorx = E.screen_cols - 1;
+            break;
+
+        case PAGE_UP:
+        case PAGE_DOWN: {
+            int times = E.screen_rows;
+            while (times--) {
+                moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+            }
+            break;
+        }
+
         case ARROW_UP:
         case ARROW_LEFT:
         case ARROW_DOWN:
