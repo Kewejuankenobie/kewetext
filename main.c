@@ -13,6 +13,7 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define KEWETEXT_VERSION "0.0.1"
+#define TAB_STOP 8
 
 enum editorKey {
     ARROW_LEFT = 1000,
@@ -31,13 +32,16 @@ enum editorKey {
 //Structure of a row of text
 typedef struct erow {
     int size;
+    int rsize;
     char* chars;
+    char* render;
 } erow;
 
 //Stores original terminal settings
 struct editorConfig {
     int cursorx;
     int cursory;
+    int renderx;
     int rowoff;
     int coloff;
     int screen_rows;
@@ -192,6 +196,48 @@ int getWindowSize(int* rows, int* cols) {
 }
 
 //ROW OPS
+
+int rowCursorXToRenderX(erow* row, int cursorx) {
+    int renderx = 0;
+    int k;
+    for (k = 0; k < cursorx; k++) {
+        if (row->chars[k] == '\t') {
+            renderx += (TAB_STOP - 1) - (renderx % TAB_STOP);
+        }
+        renderx++;
+    }
+    return renderx;
+}
+
+void editorUpdateRow(erow* row) {
+
+    int tabs = 0;
+    int j;
+    for (j = 0; j < row->size; j++) {
+        if (row->chars[j] == '\t') {
+            ++tabs;
+        }
+    }
+
+    free(row->render);
+    row->render = malloc(row->size + tabs * (TAB_STOP - 1) + 1);
+
+    int renderIndex = 0;
+    for (j = 0; j < row->size; j++) {
+        if (row->chars[j] == '\t') {
+            row->render[renderIndex++] = ' ';
+            while (renderIndex % TAB_STOP != 0) {
+                row->render[renderIndex++] = ' ';
+            }
+        } else {
+            row->render[renderIndex++] = row->chars[j];
+        }
+    }
+    row->render[renderIndex] = '\0';
+    row->rsize = renderIndex;
+
+}
+
 void editorAppendRow(char* text, size_t len) {
     E.row = realloc(E.row, sizeof(erow) * (E.num_rows + 1));
 
@@ -200,6 +246,11 @@ void editorAppendRow(char* text, size_t len) {
     E.row[rowAt].chars = malloc(len + 1);
     memcpy(E.row[rowAt].chars, text, len);
     E.row[rowAt].chars[len] = '\0';
+
+    E.row[rowAt].rsize = 0;
+    E.row[rowAt].render = NULL;
+    editorUpdateRow(&E.row[rowAt]);
+
     ++(E.num_rows);
 }
 
@@ -250,17 +301,23 @@ void appendBufFree(struct appendbuf* b) {
 //OUTPUT
 
 void scroll() {
+
+    E.renderx = 0;
+    if (E.cursory < E.num_rows) {
+        E.renderx = rowCursorXToRenderX(&E.row[E.cursory], E.cursorx);
+    }
+
     if (E.cursory < E.rowoff) {
         E.rowoff = E.cursory;
     }
     if (E.cursory >= E.rowoff + E.screen_rows) {
         E.rowoff = E.cursory - E.screen_rows + 1;
     }
-    if (E.cursorx < E.coloff) {
-        E.coloff = E.cursorx;
+    if (E.renderx < E.coloff) {
+        E.coloff = E.renderx;
     }
-    if (E.cursorx >= E.coloff + E.screen_cols) {
-        E.coloff = E.cursorx - E.screen_cols + 1;
+    if (E.renderx >= E.coloff + E.screen_cols) {
+        E.coloff = E.renderx - E.screen_cols + 1;
     }
 }
 
@@ -290,14 +347,14 @@ void drawRows(struct appendbuf* abuf) {
                 appendBufAppend(abuf, "-)", 2);
             }
         } else {
-            int rowLen = E.row[fileRow].size - E.coloff;
+            int rowLen = E.row[fileRow].rsize - E.coloff;
             if (rowLen < 0) {
                 rowLen = 0;
             }
             if (rowLen > E.screen_cols) {
                 rowLen = E.screen_cols;
             }
-            appendBufAppend(abuf, &E.row[fileRow].chars[E.coloff], rowLen);
+            appendBufAppend(abuf, &E.row[fileRow].render[E.coloff], rowLen);
         }
         appendBufAppend(abuf, "\x1b[K", 3);
 
@@ -321,7 +378,7 @@ void refreshScreen() {
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
-        (E.cursory - E.rowoff) + 1, (E.cursorx - E.coloff) + 1);
+        (E.cursory - E.rowoff) + 1, (E.renderx - E.coloff) + 1);
     appendBufAppend(&abuf, buf, strlen(buf));
 
     appendBufAppend(&abuf, "\x1b[?25h", 6);
@@ -387,11 +444,22 @@ void processKeyPress() {
             E.cursorx = 0;
             break;
         case END:
-            E.cursorx = E.screen_cols - 1;
+            if (E.cursory < E.num_rows) {
+                E.cursorx = E.row[E.cursory].size;
+            }
             break;
 
         case PAGE_UP:
         case PAGE_DOWN: {
+            if (c == PAGE_UP) {
+                E.cursory = E.rowoff;
+            } else if (c == PAGE_DOWN) {
+                E.cursory = E.rowoff + E.screen_rows - 1;
+                if (E.cursory >= E.num_rows) {
+                    E.cursory = E.num_rows;
+                }
+            }
+
             int times = E.screen_rows;
             while (times--) {
                 moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
@@ -414,6 +482,7 @@ void startEditor() {
 
     E.cursorx = 0;
     E.cursory = 0;
+    E.renderx = 0;
     E.rowoff = 0;
     E.coloff = 0;
     E.num_rows = 0;
