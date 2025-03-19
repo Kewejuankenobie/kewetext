@@ -1,8 +1,13 @@
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <string.h>
 #include <errno.h>
 
@@ -13,7 +18,7 @@ enum editorKey {
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
-    ARROW_DOWN,,
+    ARROW_DOWN,
     DELETE,
     PAGE_UP,
     PAGE_DOWN,
@@ -23,12 +28,20 @@ enum editorKey {
 
 //DATA
 
+//Structure of a row of text
+typedef struct erow {
+    int size;
+    char* chars;
+} erow;
+
 //Stores original terminal settings
 struct editorConfig {
     int cursorx;
     int cursory;
     int screen_rows;
     int screen_cols;
+    int num_rows;
+    erow* row;
     struct termios orig_termios;
 };
 
@@ -176,6 +189,40 @@ int getWindowSize(int* rows, int* cols) {
     }
 }
 
+//ROW OPS
+void editorAppendRow(char* text, size_t len) {
+    E.row = realloc(E.row, sizeof(erow) * (E.num_rows + 1));
+
+    int rowAt = E.num_rows;
+    E.row[rowAt].size = len;
+    E.row[rowAt].chars = malloc(len + 1);
+    memcpy(E.row[rowAt].chars, text, len);
+    E.row[rowAt].chars[len] = '\0';
+    ++(E.num_rows);
+}
+
+//FILE IO
+void editorOpen(char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        die("fopen");
+    }
+    char* line = NULL;
+    size_t lineCap = 0;
+    ssize_t lineLen;
+    lineLen = getline(&line, &lineCap, file);
+    while ((lineLen = getline(&line, &lineCap, file)) != -1) {
+        while (lineLen > 0 && (line[lineLen - 1] == '\n' ||
+            line[lineLen - 1] == '\r' )) {
+            lineLen--;
+        }
+        editorAppendRow(line, lineLen);
+    }
+
+    free(line);
+    fclose(file);
+}
+
 //APPEND BUFFER
 struct appendbuf {
     char* buffer;
@@ -204,25 +251,33 @@ void appendBufFree(struct appendbuf* b) {
 void drawRows(struct appendbuf* abuf) {
     int i;
     for (i = 0; i < E.screen_rows; ++i) {
-        if (i == E.screen_rows / 3) {
-            char welcome[80];
-            int welcomLength = snprintf(welcome, sizeof(welcome),
-                "Kewetext Editor -- version %s", KEWETEXT_VERSION);
-            if (welcomLength > E.screen_cols) {
-                welcomLength = E.screen_cols;
-            }
-            int padding = (E.screen_cols - welcomLength) / 2;
-            if (padding) {
-                appendBufAppend(abuf, "-)", 2);
-                padding -= 2;
-            }
-            while (padding--) {
-                appendBufAppend(abuf, " ", 1);
-            }
+        if (i >= E.num_rows) {
+            if (E.num_rows == 0 && i == E.screen_rows / 3) {
+                char welcome[80];
+                int welcomLength = snprintf(welcome, sizeof(welcome),
+                    "Kewetext Editor -- version %s", KEWETEXT_VERSION);
+                if (welcomLength > E.screen_cols) {
+                    welcomLength = E.screen_cols;
+                }
+                int padding = (E.screen_cols - welcomLength) / 2;
+                if (padding) {
+                    appendBufAppend(abuf, "-)", 2);
+                    padding -= 2;
+                }
+                while (padding--) {
+                    appendBufAppend(abuf, " ", 1);
+                }
 
-            appendBufAppend(abuf, welcome, welcomLength);
+                appendBufAppend(abuf, welcome, welcomLength);
+            } else {
+                appendBufAppend(abuf, "-)", 2);
+            }
         } else {
-            appendBufAppend(abuf, "-)", 2);
+            int rowLen = E.row[i].size;
+            if (rowLen > E.screen_cols) {
+                rowLen = E.screen_cols;
+            }
+            appendBufAppend(abuf, E.row[i].chars, rowLen);
         }
         appendBufAppend(abuf, "\x1b[K", 3);
 
@@ -320,16 +375,21 @@ void startEditor() {
 
     E.cursorx = 0;
     E.cursory = 0;
+    E.num_rows = 0;
+    E.row = NULL;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
     }
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
 
     enableRawMode();
     startEditor();
+    if (argc > 1) {
+        editorOpen(argv[1]);
+    }
 
     while (1) {
         refreshScreen();
