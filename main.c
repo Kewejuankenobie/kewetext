@@ -38,6 +38,8 @@ typedef struct erow {
 struct editorConfig {
     int cursorx;
     int cursory;
+    int rowoff;
+    int coloff;
     int screen_rows;
     int screen_cols;
     int num_rows;
@@ -210,7 +212,6 @@ void editorOpen(char* filename) {
     char* line = NULL;
     size_t lineCap = 0;
     ssize_t lineLen;
-    lineLen = getline(&line, &lineCap, file);
     while ((lineLen = getline(&line, &lineCap, file)) != -1) {
         while (lineLen > 0 && (line[lineLen - 1] == '\n' ||
             line[lineLen - 1] == '\r' )) {
@@ -248,10 +249,26 @@ void appendBufFree(struct appendbuf* b) {
 
 //OUTPUT
 
+void scroll() {
+    if (E.cursory < E.rowoff) {
+        E.rowoff = E.cursory;
+    }
+    if (E.cursory >= E.rowoff + E.screen_rows) {
+        E.rowoff = E.cursory - E.screen_rows + 1;
+    }
+    if (E.cursorx < E.coloff) {
+        E.coloff = E.cursorx;
+    }
+    if (E.cursorx >= E.coloff + E.screen_cols) {
+        E.coloff = E.cursorx - E.screen_cols + 1;
+    }
+}
+
 void drawRows(struct appendbuf* abuf) {
     int i;
     for (i = 0; i < E.screen_rows; ++i) {
-        if (i >= E.num_rows) {
+        int fileRow = E.rowoff + i;
+        if (fileRow >= E.num_rows) {
             if (E.num_rows == 0 && i == E.screen_rows / 3) {
                 char welcome[80];
                 int welcomLength = snprintf(welcome, sizeof(welcome),
@@ -273,11 +290,14 @@ void drawRows(struct appendbuf* abuf) {
                 appendBufAppend(abuf, "-)", 2);
             }
         } else {
-            int rowLen = E.row[i].size;
+            int rowLen = E.row[fileRow].size - E.coloff;
+            if (rowLen < 0) {
+                rowLen = 0;
+            }
             if (rowLen > E.screen_cols) {
                 rowLen = E.screen_cols;
             }
-            appendBufAppend(abuf, E.row[i].chars, rowLen);
+            appendBufAppend(abuf, &E.row[fileRow].chars[E.coloff], rowLen);
         }
         appendBufAppend(abuf, "\x1b[K", 3);
 
@@ -288,6 +308,9 @@ void drawRows(struct appendbuf* abuf) {
 }
 
 void refreshScreen() {
+
+    scroll();
+
     //Remember the buff is seen in formating terminal text
     struct appendbuf abuf = APPENDBUF_INIT;
 
@@ -297,7 +320,8 @@ void refreshScreen() {
     drawRows(&abuf);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cursory + 1, E.cursorx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
+        (E.cursory - E.rowoff) + 1, (E.cursorx - E.coloff) + 1);
     appendBufAppend(&abuf, buf, strlen(buf));
 
     appendBufAppend(&abuf, "\x1b[?25h", 6);
@@ -308,6 +332,9 @@ void refreshScreen() {
 
 //INPUT
 void moveCursor(int key) {
+    erow* row = (E.cursory >= E.num_rows) ? NULL : &E.row[E.cursory];
+
+
     switch (key) {
         case ARROW_UP:
             if (E.cursory != 0) {
@@ -317,18 +344,30 @@ void moveCursor(int key) {
         case ARROW_LEFT:
             if (E.cursorx != 0) {
                 E.cursorx--;
+            } else if (E.cursory > 0) {
+                E.cursory--;
+                E.cursorx = E.row[E.cursory].size;
             }
             break;
         case ARROW_DOWN:
-            if (E.cursory != E.screen_rows - 1) {
+            if (E.cursory < E.num_rows) {
                 E.cursory++;
             }
             break;
         case ARROW_RIGHT:
-            if (E.cursorx != E.screen_cols - 1) {
+            if (row && E.cursorx < row->size) {
                 E.cursorx++;
+            } else if (row && E.cursorx == row->size) {
+                E.cursory++;
+                E.cursorx = 0;
             }
             break;
+    }
+
+    row = (E.cursory >= E.num_rows) ? NULL : &E.row[E.cursory];
+    int rowlen = row ? row->size : 0;
+    if (E.cursorx > rowlen) {
+        E.cursorx = rowlen;
     }
 }
 
@@ -375,6 +414,8 @@ void startEditor() {
 
     E.cursorx = 0;
     E.cursory = 0;
+    E.rowoff = 0;
+    E.coloff = 0;
     E.num_rows = 0;
     E.row = NULL;
 
