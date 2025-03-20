@@ -4,11 +4,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <string.h>
+#include <time.h>
 #include <errno.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
@@ -16,6 +18,7 @@
 #define TAB_STOP 8
 
 enum editorKey {
+    BACKSPACE = 127,
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
@@ -48,6 +51,9 @@ struct editorConfig {
     int screen_cols;
     int num_rows;
     erow* row;
+    char* filename;
+    char status[80];
+    time_t status_time;
     struct termios orig_termios;
 };
 
@@ -254,8 +260,33 @@ void editorAppendRow(char* text, size_t len) {
     ++(E.num_rows);
 }
 
+void rowInsertChar(erow* row, int pos, int charToInsert) {
+    if (pos < 0 || pos > row->size) {
+        pos = row->size;
+    }
+    row->chars = realloc(row->chars, row->size + 2);
+    memmove(&row->chars[pos + 1], &row->chars[pos], row->size - pos + 1);
+    row->size++;
+    row->chars[pos] = charToInsert;
+    editorUpdateRow(row);
+}
+
+//EDITOR OPERATIONS
+
+void editorInsertChar(int c) {
+    if (E.cursory == E.num_rows) {
+        editorAppendRow("", 0);
+    }
+    rowInsertChar(&E.row[E.cursory], E.cursorx, c);
+    E.cursorx++;
+}
+
 //FILE IO
 void editorOpen(char* filename) {
+
+    free(E.filename);
+    E.filename = strdup(filename);
+
     FILE* file = fopen(filename, "r");
     if (!file) {
         die("fopen");
@@ -358,9 +389,43 @@ void drawRows(struct appendbuf* abuf) {
         }
         appendBufAppend(abuf, "\x1b[K", 3);
 
-        if (i < E.screen_rows - 1) {
-            appendBufAppend(abuf, "\r\n", 2);
+        appendBufAppend(abuf, "\r\n", 2);
+    }
+}
+
+void drawStatusBar(struct appendbuf* abuf) {
+    appendBufAppend(abuf, "\x1b[7m", 4);
+    char status[80], rightstatus[80];
+    int length = snprintf(status, sizeof(status)," %.20s - %d lines",
+        E.filename ? E.filename : "[No Name]", E.num_rows);
+    int rightlength = snprintf(rightstatus, sizeof(rightstatus), "Line: %d/%d ",
+        E.cursory + 1, E.num_rows);
+    if (length > E.screen_cols) {
+        length = E.screen_cols;
+    }
+    appendBufAppend(abuf, status, length);
+
+    while (length < E.screen_cols) {
+        if (E.screen_cols - length == rightlength) {
+            appendBufAppend(abuf, rightstatus, rightlength);
+            break;
+        } else {
+            appendBufAppend(abuf, " ", 1);
+            ++length;
         }
+    }
+    appendBufAppend(abuf, "\x1b[m", 3);
+    appendBufAppend(abuf, "\r\n", 2);
+}
+
+void drawMessage(struct appendbuf* abuf) {
+    appendBufAppend(abuf, "\x1b[K", 3);
+    int messageLength = strlen(E.status);
+    if (messageLength > E.screen_cols) {
+        messageLength = E.screen_cols;
+    }
+    if (messageLength && time(NULL) - E.status_time < 5) {
+        appendBufAppend(abuf, E.status, messageLength);
     }
 }
 
@@ -375,6 +440,8 @@ void refreshScreen() {
     appendBufAppend(&abuf, "\x1b[H", 3);
 
     drawRows(&abuf);
+    drawStatusBar(&abuf);
+    drawMessage(&abuf);
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
@@ -385,6 +452,14 @@ void refreshScreen() {
 
     write(STDOUT_FILENO, abuf.buffer, abuf.length);
     appendBufFree(&abuf);
+}
+
+void setStatusMessage(const char* message, ...) {
+    va_list messageArgs;
+    va_start(messageArgs, message);
+    vsnprintf(E.status, sizeof(E.status), message, messageArgs);
+    va_end(messageArgs);
+    E.status_time = time(NULL);
 }
 
 //INPUT
@@ -434,6 +509,8 @@ void processKeyPress() {
     int c = editorReadKey();
 
     switch (c) {
+        case '\r':
+            break;
         case CTRL_KEY('Q'):
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
@@ -447,6 +524,11 @@ void processKeyPress() {
             if (E.cursory < E.num_rows) {
                 E.cursorx = E.row[E.cursory].size;
             }
+            break;
+
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DELETE:
             break;
 
         case PAGE_UP:
@@ -473,6 +555,14 @@ void processKeyPress() {
         case ARROW_RIGHT:
             moveCursor(c);
             break;
+
+        case CTRL_KEY('l'):
+        case '\x1b':
+            break;
+
+        default:
+            editorInsertChar(c);
+            break;
     }
 }
 
@@ -487,10 +577,14 @@ void startEditor() {
     E.coloff = 0;
     E.num_rows = 0;
     E.row = NULL;
+    E.filename = NULL;
+    E.status[0] = '\0';
+    E.status_time = 0;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
     }
+    E.screen_rows -= 2;
 }
 
 int main(int argc, char *argv[]) {
@@ -500,6 +594,8 @@ int main(int argc, char *argv[]) {
     if (argc > 1) {
         editorOpen(argv[1]);
     }
+
+    setStatusMessage("HELP: Ctrl-Q: Quit");
 
     while (1) {
         refreshScreen();
