@@ -2,6 +2,7 @@
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -64,6 +65,8 @@ struct editorConfig E;
 
 //PROTOTYPES
 void setStatusMessage(const char* message, ...);
+void refreshScreen();
+char* editorPrompt(char* prompt);
 
 //TERMINAL
 
@@ -409,9 +412,13 @@ void editorOpen(char* filename) {
     E.dirty = 0;
 }
 
-void editorSaveFile() {
-    if (E.filename == NULL) {
-        return;
+void editorSaveFile(int newFile) {
+    if (E.filename == NULL || newFile) {
+        E.filename = editorPrompt("Save file as: %s");
+        if (E.filename == NULL) {
+            setStatusMessage("Stopped Save");
+            return;
+        }
     }
 
     int length;
@@ -592,6 +599,47 @@ void setStatusMessage(const char* message, ...) {
 }
 
 //INPUT
+
+char* editorPrompt(char* prompt) {
+
+    //Initial memory alloc for answer buffer
+    size_t bufferSize = 128;
+    char* buffer = malloc(bufferSize);
+    size_t bufferLength = 0;
+    buffer[0] = '\0';
+
+    while (1) {
+        setStatusMessage(prompt, buffer);
+        refreshScreen();
+
+        int c = editorReadKey();
+        if (c == DELETE || c == BACKSPACE || c == CTRL('h')) {
+            if (bufferLength != 0) {
+                buffer[--bufferLength] = '\0';
+            }
+        } else if (c == '\x1b') {
+            setStatusMessage("");
+            free(buffer);
+            return NULL;
+        } else if (c == '\r') {
+            if (bufferLength != 0) {
+                setStatusMessage("");
+                return buffer;
+            }
+        } else if (!iscntrl(c) && c < 128) {
+            if (bufferLength == bufferSize - 1) {
+                //When we are at the buffer size, double the space and realloc mem
+                bufferSize *= 2;
+                buffer = realloc(buffer, bufferSize);
+            }
+            //Set end of buffer to c, increment it, and set very end to null terminator
+            buffer[bufferLength++] = c;
+            buffer[bufferLength] = '\0';
+        }
+
+    }
+}
+
 void moveCursor(int key) {
     erow* row = (E.cursory >= E.num_rows) ? NULL : &E.row[E.cursory];
 
@@ -655,7 +703,11 @@ void processKeyPress() {
             break;
 
         case CTRL_KEY('S'):
-            editorSaveFile();
+            editorSaveFile(0);
+            break;
+
+        case CTRL_KEY('N'):
+            editorSaveFile(1);
             break;
 
         case HOME:
@@ -742,7 +794,7 @@ int main(int argc, char *argv[]) {
         editorOpen(argv[1]);
     }
 
-    setStatusMessage("HELP: Ctrl-S: Save, Ctrl-Q: Quit");
+    setStatusMessage("HELP: Ctrl-S: Save, Ctrl-N: Save New File, Ctrl-Q: Quit");
 
     while (1) {
         refreshScreen();
