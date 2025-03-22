@@ -103,12 +103,26 @@ char* C_HL_keywords[] = {
     "unsigned|", "signed|", "void|", NULL
 };
 
+char* PY_HL_extensions[] = {".py", NULL};
+char* PY_HL_keywords[] = {
+    "if", "else", "elif", "for", "while", "in", "break", "continue", "return",
+    "class", "match", "case",
+
+    "int|", "str|", "tuple|", "list|", "dict|", "self|", "def|", NULL};
+
 struct editorSyntax HLDB[] = {
     {
         "c",
         C_HL_extensions,
         C_HL_keywords,
         "//", "/*", "*/",
+        HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
+    },
+    {
+        "py",
+        PY_HL_extensions,
+        PY_HL_keywords,
+        "#", "'''", "'''",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     },
 };
