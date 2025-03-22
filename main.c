@@ -96,7 +96,8 @@ char* C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
 char* C_HL_keywords[] = {
     "switch", "if", "else", "for", "while", "break", "continue", "return",
     "struct", "union", "typedef", "static", "enum", "class", "case",
-    "public", "public:", "protected", "protected:", "private", "private:", "do", "template", "typename",
+    "public", "public:", "protected", "protected:", "private", "private:", "do",
+    "template", "typename", "try", "catch",
 
     "int|", "long|", "short|", "float|", "double|", "char|",
     "unsigned|", "signed|", "void|", NULL
@@ -122,6 +123,7 @@ char* editorPrompt(char* prompt, void (*callback) (char*, int));
 //TERMINAL
 
 void die(const char* error) {
+    //Exits program on error and displays an error message
     write(STDOUT_FILENO, "\x1b[2J", 4);
     write(STDOUT_FILENO, "\x1b[H", 3);
 
@@ -130,12 +132,15 @@ void die(const char* error) {
 }
 
 void disableRawMode() {
+    //Disables terminals raw edit mode and returns to it's original settings
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1) {
         die("tcsetattr");
     }
 }
 
 void enableRawMode() {
+    //Enables the terminals raw mode
+    //Used to process a keypress on each press plus not display in the console
     if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) {
         die("tcgetattr");
     }
@@ -169,6 +174,7 @@ int editorReadKey() {
     }
 
     if (c == '\x1b') {
+        //Handles the reading of escape characters like the arrow keys and esc
         char seq[3];
         if (read(STDIN_FILENO, &seq[0], 1) != 1) {
             return '\x1b';
@@ -210,6 +216,7 @@ int editorReadKey() {
         }
         return '\x1b';
     } else {
+        //All non escape characters
         return c;
     }
 }
@@ -246,6 +253,7 @@ int getCursorPosition(int* rows, int* cols) {
 }
 
 int getWindowSize(int* rows, int* cols) {
+    //Gets the number of rows and columns in the terminal window of any size
     struct winsize ws;
 
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
@@ -264,17 +272,20 @@ int getWindowSize(int* rows, int* cols) {
 //SYNTAX HIGHLIGHTING
 
 int isSeperator(int c) {
+    //Determines if a character is a non-highlightable character
     return isspace(c) || c == '\0' || strchr(",.()+-/*-~%<>[];", c) != NULL;
 }
 
 void editorUpdateSyntax(erow* row) {
+    //Updates the highlighted syntax of the editor based on the editors syntax
     row->highlight = realloc(row->highlight, row->rsize);
     memset(row->highlight, HL_NORMAL, row->rsize);
 
     if (E.syntax == NULL) {
         return;
     }
-
+    
+    //Aliases keywords and comments syntax being used
     char** keywords = E.syntax->keywords;
 
     char* scs = E.syntax->singleLineCommentStart;
@@ -376,7 +387,7 @@ void editorUpdateSyntax(erow* row) {
                     break;
                 }
             }
-            if (keywords[j] == NULL) {
+            if (keywords[j] != NULL) {
                 prevSep = 0;
                 continue;
             }
@@ -394,6 +405,7 @@ void editorUpdateSyntax(erow* row) {
 }
 
 int syntaxToColor(int hl) {
+    //Returns the syntax color for terminal escape sequences
     switch (hl) {
         case HL_NUMBER: return 31;
         case HL_KEYWORD1: return 35;
@@ -407,6 +419,7 @@ int syntaxToColor(int hl) {
 }
 
 void editorSelectSyntaxHighlight() {
+    //Given the file, selects what format of syntax highlighting to use
     E.syntax = NULL;
     if (E.filename == NULL) {
         return;
@@ -437,6 +450,7 @@ void editorSelectSyntaxHighlight() {
 //ROW OPS
 
 int rowCursorXToRenderX(erow* row, int cursorx) {
+    //Converts cursor x to render x
     int renderx = 0;
     int k;
     for (k = 0; k < cursorx; k++) {
@@ -449,6 +463,7 @@ int rowCursorXToRenderX(erow* row, int cursorx) {
 }
 
 int rowRenderXToCursorX(erow* row, int renderx) {
+    //Converts render x to cursor x
     int cur_renderx = 0;
     int k;
     for (k = 0; k < renderx; k++) {
@@ -464,7 +479,8 @@ int rowRenderXToCursorX(erow* row, int renderx) {
 }
 
 void editorUpdateRow(erow* row) {
-
+    
+    //Updates a row of text
     int tabs = 0;
     int j;
     for (j = 0; j < row->size; j++) {
@@ -478,6 +494,7 @@ void editorUpdateRow(erow* row) {
 
     int renderIndex = 0;
     for (j = 0; j < row->size; j++) {
+        //Adds characters to render index and converts tabs to a number of spaces to add
         if (row->chars[j] == '\t') {
             row->render[renderIndex++] = ' ';
             while (renderIndex % TAB_STOP != 0) {
@@ -495,6 +512,7 @@ void editorUpdateRow(erow* row) {
 
 void editorInsertRow(int rowAt, char* text, size_t len) {
 
+    //Inserts a row at a position and updates other row indecies
     if (rowAt < 0 || rowAt > E.num_rows) {
         return;
     }
@@ -524,13 +542,15 @@ void editorInsertRow(int rowAt, char* text, size_t len) {
 }
 
 void editorFreeRow(erow* row) {
+    //Frees heap memory used by a row
     free(row->render);
     free(row->chars);
     free(row->highlight);
 }
 
 void editorDeleteRow(int pos) {
-    if (pos < 0 || pos > E.num_rows) {
+    //Removes a row and updates other row indecies
+    if (pos < 0 || pos >= E.num_rows) {
         return;
     }
     editorFreeRow(&E.row[pos]);
@@ -543,6 +563,7 @@ void editorDeleteRow(int pos) {
 }
 
 void rowInsertChar(erow* row, int pos, int charToInsert) {
+    //Inserts a character at a position in a row
     if (pos < 0 || pos > row->size) {
         pos = row->size;
     }
@@ -555,6 +576,7 @@ void rowInsertChar(erow* row, int pos, int charToInsert) {
 }
 
 void rowAppendString(erow* row, char* text, size_t length) {
+    //Adds a string of characters to the end of a row
     row->chars = realloc(row->chars, row->size + length + 1);
     memcpy(&row->chars[row->size], text, length);
     row->size += length;
@@ -564,7 +586,8 @@ void rowAppendString(erow* row, char* text, size_t length) {
 }
 
 void rowDeleteChar(erow* row, int pos) {
-    if (pos < 0 || pos > row->size) {
+    //Deletes a character at a position in a row
+    if (pos < 0 || pos >= row->size) {
         return;
     }
     memmove(&row->chars[pos], &row->chars[pos + 1], row->size - pos);
@@ -576,6 +599,7 @@ void rowDeleteChar(erow* row, int pos) {
 //EDITOR OPERATIONS
 
 void editorInsertChar(int c) {
+    //Inserts a character in the editor and increments cursor
     if (E.cursory == E.num_rows) {
         editorInsertRow(E.num_rows, "", 0);
     }
@@ -584,6 +608,7 @@ void editorInsertChar(int c) {
 }
 
 void editorInsertNewLine() {
+    //Inserts a new line in the editor based on cursor position
     if (E.cursorx == 0) {
         editorInsertRow(E.cursory, "", 0);
     } else {
@@ -599,6 +624,7 @@ void editorInsertNewLine() {
 }
 
 void editorDeleteChar() {
+    //Deletes a character in the editor at the cursor position
     if (E.cursory == E.num_rows) {
         return;
     }
@@ -607,7 +633,7 @@ void editorDeleteChar() {
     }
     erow* row = &E.row[E.cursory];
     if (E.cursorx > 0) {
-        rowDeleteChar(row, E.cursorx);
+        rowDeleteChar(row, E.cursorx - 1);
         E.cursorx--;
     } else {
         E.cursorx = E.row[E.cursory - 1].size;
@@ -620,6 +646,7 @@ void editorDeleteChar() {
 //FIND
 
 void editorFindCallback(char* query, int key) {
+    //Finds the query in the file, uses key to navigate all occurances (Case sensitive)
     static int last_match = -1;
     static int direction = 1;
 
@@ -632,6 +659,7 @@ void editorFindCallback(char* query, int key) {
         saved_hl = NULL;
     }
 
+    //Determines direction to move from key press
     if (key == '\r' || key == '\x1b') {
         last_match = -1;
         direction = 1;
@@ -652,6 +680,7 @@ void editorFindCallback(char* query, int key) {
 
     int r;
     for (r = 0; r < E.num_rows; ++r) {
+        //Based on current, find next occuring query, Move current to start or end if necissary
         current += direction;
         if (current == -1) {
             current = E.num_rows - 1;
@@ -676,6 +705,7 @@ void editorFindCallback(char* query, int key) {
 }
 
 void editorFind() {
+    //Enteres mode to find strings in a file
     int save_cursorx = E.cursorx;
     int save_cursory = E.cursory;
     int save_rowoff = E.rowoff;
@@ -696,6 +726,7 @@ void editorFind() {
 //FILE IO
 
 char* editorRowsToString(int* buflen) {
+    //Convertes all rows text to a string
     int totlen = 0;
     int i;
     for (i = 0; i < E.num_rows; i++) {
@@ -716,7 +747,7 @@ char* editorRowsToString(int* buflen) {
 }
 
 void editorOpen(char* filename) {
-
+    //Opens a file in the editor if argument added
     free(E.filename);
     E.filename = strdup(filename);
 
@@ -730,6 +761,7 @@ void editorOpen(char* filename) {
     size_t lineCap = 0;
     ssize_t lineLen;
     while ((lineLen = getline(&line, &lineCap, file)) != -1) {
+        //Adds all lines as text for a rows
         while (lineLen > 0 && (line[lineLen - 1] == '\n' ||
             line[lineLen - 1] == '\r' )) {
             lineLen--;
@@ -743,6 +775,7 @@ void editorOpen(char* filename) {
 }
 
 void editorSaveFile(int newFile) {
+    //Saves the current file or as a new file
     if (E.filename == NULL || newFile) {
         E.filename = editorPrompt("Save file as: %s", NULL);
         if (E.filename == NULL) {
@@ -774,6 +807,7 @@ void editorSaveFile(int newFile) {
 
 //APPEND BUFFER
 struct appendbuf {
+    //Buffer of chars to add to a row
     char* buffer;
     int length;
 };
@@ -781,6 +815,7 @@ struct appendbuf {
 #define APPENDBUF_INIT { NULL, 0 }
 
 void appendBufAppend(struct appendbuf* b, const char* str, int length) {
+    //Adds chars to the append buffer
     char* newBuffer = realloc(b->buffer, b->length + length);
     if (newBuffer == NULL) {
         return;
@@ -792,13 +827,14 @@ void appendBufAppend(struct appendbuf* b, const char* str, int length) {
 }
 
 void appendBufFree(struct appendbuf* b) {
+    //Frees heap memory used in the append buffer
     free(b->buffer);
 }
 
 //OUTPUT
 
 void scroll() {
-
+    //Handles scrolling based on the cursor position
     E.renderx = 0;
     if (E.cursory < E.num_rows) {
         E.renderx = rowCursorXToRenderX(&E.row[E.cursory], E.cursorx);
@@ -819,6 +855,7 @@ void scroll() {
 }
 
 void drawRows(struct appendbuf* abuf) {
+    //Draws all rows in the editor
     int i;
     for (i = 0; i < E.screen_rows; ++i) {
         int fileRow = E.rowoff + i;
@@ -851,13 +888,14 @@ void drawRows(struct appendbuf* abuf) {
             if (rowLen > E.screen_cols) {
                 rowLen = E.screen_cols;
             }
-            //Color digits
+            
             char* c = &E.row[fileRow].render[E.coloff];
             unsigned char* hl = &E.row[fileRow].highlight[E.coloff];
             int currentColor = -1;
             int j;
             for (j = 0; j < rowLen; ++j) {
                 if (iscntrl(c[j])) {
+                    //Adds special control characters to the screen
                     char sym = (c[j] <= 26) ? '@' + c[j] : '?';
                     appendBufAppend(abuf, "\x1b[7m", 4);
                     appendBufAppend(abuf, &sym, 1);
@@ -868,12 +906,14 @@ void drawRows(struct appendbuf* abuf) {
                         appendBufAppend(abuf, buf, clen);
                     }
                 } else if (hl[j] == HL_NORMAL) {
+                    //Adds normal text
                     if (currentColor != -1) {
                         appendBufAppend(abuf, "\x1b[39m", 5);
                         currentColor = -1;
                     }
                     appendBufAppend(abuf, &c[j], 1);
                 } else {
+                    //Adds colored text based on the highlight array
                     int color = syntaxToColor(hl[j]);
                     if (color != currentColor) {
                         currentColor = color;
@@ -892,6 +932,7 @@ void drawRows(struct appendbuf* abuf) {
 }
 
 void drawStatusBar(struct appendbuf* abuf) {
+    //Draws the status bar
     appendBufAppend(abuf, "\x1b[7m", 4);
     char status[80], rightstatus[80];
     int length = snprintf(status, sizeof(status)," %.20s - %d lines %s",
@@ -918,6 +959,7 @@ void drawStatusBar(struct appendbuf* abuf) {
 }
 
 void drawMessage(struct appendbuf* abuf) {
+    //Draws the message containing prompts and help
     appendBufAppend(abuf, "\x1b[K", 3);
     int messageLength = strlen(E.status);
     if (messageLength > E.screen_cols) {
@@ -929,7 +971,7 @@ void drawMessage(struct appendbuf* abuf) {
 }
 
 void refreshScreen() {
-
+    //Refreshes all drawn elements, cursor position, prints out append buffer 
     scroll();
 
     //Remember the buff is seen in formating terminal text
@@ -954,6 +996,7 @@ void refreshScreen() {
 }
 
 void setStatusMessage(const char* message, ...) {
+    //Sets the editors status message
     va_list messageArgs;
     va_start(messageArgs, message);
     vsnprintf(E.status, sizeof(E.status), message, messageArgs);
@@ -964,7 +1007,7 @@ void setStatusMessage(const char* message, ...) {
 //INPUT
 
 char* editorPrompt(char* prompt, void (*callback) (char*, int)) {
-
+    //Prompts the user for a response to a command
     //Initial memory alloc for answer buffer
     size_t bufferSize = 128;
     char* buffer = malloc(bufferSize);
@@ -1013,6 +1056,7 @@ char* editorPrompt(char* prompt, void (*callback) (char*, int)) {
 }
 
 void moveCursor(int key) {
+    //Moves the cursor based on user input
     erow* row = (E.cursory >= E.num_rows) ? NULL : &E.row[E.cursory];
 
 
@@ -1054,7 +1098,7 @@ void moveCursor(int key) {
 
 
 void processKeyPress() {
-    //Reads and performs functions for special control keys
+    //Processes key presses and performs their functions
     static int quit_times = QUIT_TIMES;
     int c = editorReadKey();
 
@@ -1143,7 +1187,7 @@ void processKeyPress() {
 //MAIN CODE
 
 void startEditor() {
-
+    //Starts the text editor and initializes all editor variables
     E.cursorx = 0;
     E.cursory = 0;
     E.renderx = 0;
@@ -1165,7 +1209,7 @@ void startEditor() {
 
 
 int main(int argc, char *argv[]) {
-
+    //kewetext main code starts, and loops through editor functions
     enableRawMode();
     startEditor();
     if (argc > 1) {
