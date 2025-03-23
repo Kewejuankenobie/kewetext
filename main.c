@@ -26,6 +26,10 @@ enum editorKey {
     ARROW_RIGHT,
     ARROW_UP,
     ARROW_DOWN,
+    ALT_RIGHT,
+    ALT_LEFT,
+    ALT_UP,
+    ALT_DOWN,
     DELETE,
     PAGE_UP,
     PAGE_DOWN,
@@ -87,6 +91,12 @@ struct editorConfig {
     time_t status_time;
     struct editorSyntax* syntax;
     struct termios orig_termios;
+
+    //Start included, end not included, equal startx and endx and starty and endy means no select
+    int sel_startx;
+    int sel_starty;
+    int sel_endx;
+    int sel_endy;
 };
 
 struct editorConfig E;
@@ -96,7 +106,7 @@ char* C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
 char* C_HL_keywords[] = {
     "switch", "if", "else", "for", "while", "break", "continue", "return",
     "struct", "union", "typedef", "static", "enum", "class", "case",
-    "public", "public:", "protected", "protected:", "private", "private:", "do",
+    "public", "protected", "private", "do",
     "template", "typename", "try", "catch",
 
     "int|", "long|", "short|", "float|", "double|", "char|",
@@ -108,7 +118,7 @@ char* PY_HL_keywords[] = {
     "if", "else", "elif", "for", "while", "in", "break", "continue", "return",
     "class", "match", "case",
 
-    "int|", "str|", "tuple|", "list|", "dict|", "self|", "def|", NULL};
+    "int|", "str|", "float|", "tuple|", "list|", "dict|", "self|", "def|", NULL};
 
 struct editorSyntax HLDB[] = {
     {
@@ -189,7 +199,7 @@ int editorReadKey() {
 
     if (c == '\x1b') {
         //Handles the reading of escape characters like the arrow keys and esc
-        char seq[3];
+        char seq[5];
         if (read(STDIN_FILENO, &seq[0], 1) != 1) {
             return '\x1b';
         }
@@ -201,6 +211,7 @@ int editorReadKey() {
                 if (read(STDIN_FILENO, &seq[2], 1) != 1) {
                     return '\x1b';
                 }
+
                 if (seq[2] == '~') {
                     switch (seq[1]) {
                         case '1': return HOME;
@@ -210,6 +221,19 @@ int editorReadKey() {
                         case '6': return PAGE_DOWN;
                         case '7': return HOME;
                         case '8': return END;
+                    }
+                }
+                if (read(STDIN_FILENO, &seq[3], 1) != 1 ||
+                    read(STDIN_FILENO, &seq[4], 1) != 1) {
+                    return '\x1b';
+                }
+
+                if (seq[2] == ';' && seq[3] == '3') {
+                    switch (seq[4]) {
+                        case 'A': return ALT_UP;
+                        case 'B': return ALT_DOWN;
+                        case 'C': return ALT_RIGHT;
+                        case 'D': return ALT_LEFT;
                     }
                 }
             } else {
@@ -287,7 +311,7 @@ int getWindowSize(int* rows, int* cols) {
 
 int isSeperator(int c) {
     //Determines if a character is a non-highlightable character
-    return isspace(c) || c == '\0' || strchr(",.()+-/*-~%<>[];", c) != NULL;
+    return isspace(c) || c == '\0' || strchr(",.()+-/*-~%<>[];:", c) != NULL;
 }
 
 void editorUpdateSyntax(erow* row) {
@@ -868,6 +892,26 @@ void scroll() {
     }
 }
 
+int drawSelect(struct appendbuf* abuf, int charx, int chary) {
+    //Add characters from start to not including end to selected chars
+    //Highlight selected characters in a color or inverse (All selecting should do)
+    if (E.sel_startx == E.sel_starty == E.sel_endx == E.sel_endy) {
+        return 0;
+    }
+    if (((E.sel_starty < chary) && (chary < E.sel_endy)) || //Middle
+        ((E.sel_starty == chary) && (chary == E.sel_endy) && (E.sel_startx <= charx) && (charx < E.sel_endx)) || //Same start/end row
+        ((E.sel_starty == chary) && (chary != E.sel_endy) && (E.sel_startx <= charx)) || //Start row
+        ((chary == E.sel_endy) && (E.sel_starty != chary) && (charx < E.sel_endx))) {//End row
+        appendBufAppend(abuf, "\x1b[7m", 4);
+        return 1;
+    }
+    return 0;
+
+    //With the characters saved, we can then copy and paste
+    //COPY: use realloc for this and memcpy characters from start pos in a row to end (end of row add newline char)
+    //PASTE: Insert the string into the row at cursorx, a newline creates a new row
+}
+
 void drawRows(struct appendbuf* abuf) {
     //Draws all rows in the editor
     int i;
@@ -908,6 +952,7 @@ void drawRows(struct appendbuf* abuf) {
             int currentColor = -1;
             int j;
             for (j = 0; j < rowLen; ++j) {
+
                 if (iscntrl(c[j])) {
                     //Adds special control characters to the screen
                     char sym = (c[j] <= 26) ? '@' + c[j] : '?';
@@ -925,7 +970,12 @@ void drawRows(struct appendbuf* abuf) {
                         appendBufAppend(abuf, "\x1b[39m", 5);
                         currentColor = -1;
                     }
+                    //TODO: is selected
+                    int isSelected = drawSelect(abuf, j, fileRow);
                     appendBufAppend(abuf, &c[j], 1);
+                    if (isSelected) {
+                        appendBufAppend(abuf, "\x1b[m", 3);
+                    }
                 } else {
                     //Adds colored text based on the highlight array
                     int color = syntaxToColor(hl[j]);
@@ -935,7 +985,15 @@ void drawRows(struct appendbuf* abuf) {
                         int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
                         appendBufAppend(abuf, buf, clen);
                     }
+                    //TODO: is selected
+                    int isSelected = drawSelect(abuf, j, fileRow);
                     appendBufAppend(abuf, &c[j], 1);
+                    if (isSelected) {
+                        appendBufAppend(abuf, "\x1b[m", 3);
+                        char buf[16];
+                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        appendBufAppend(abuf, buf, clen);
+                    }
                 }
             }
             appendBufAppend(abuf, "\x1b[39m", 5);
@@ -1076,11 +1134,13 @@ void moveCursor(int key) {
 
     switch (key) {
         case ARROW_UP:
+        case ALT_UP:
             if (E.cursory != 0) {
                 E.cursory--;
             }
             break;
         case ARROW_LEFT:
+        case ALT_LEFT:
             if (E.cursorx != 0) {
                 E.cursorx--;
             } else if (E.cursory > 0) {
@@ -1089,11 +1149,13 @@ void moveCursor(int key) {
             }
             break;
         case ARROW_DOWN:
+        case ALT_DOWN:
             if (E.cursory < E.num_rows) {
                 E.cursory++;
             }
             break;
         case ARROW_RIGHT:
+        case ALT_RIGHT:
             if (row && E.cursorx < row->size) {
                 E.cursorx++;
             } else if (row && E.cursorx == row->size) {
@@ -1101,6 +1163,7 @@ void moveCursor(int key) {
                 E.cursorx = 0;
             }
             break;
+
     }
 
     row = (E.cursory >= E.num_rows) ? NULL : &E.row[E.cursory];
@@ -1110,10 +1173,49 @@ void moveCursor(int key) {
     }
 }
 
+void moveSelect(int key, int* in_select, int* sel_dir) {
+    switch (key) {
+        case ALT_UP:
+        case ALT_LEFT:
+            if (!*in_select) {
+                *in_select = 1;
+                *sel_dir = -1;
+                E.sel_endx = E.cursorx;
+                E.sel_endy = E.cursory;
+            }
+            moveCursor(key);
+            break;
+
+        case ALT_DOWN:
+        case ALT_RIGHT:
+            if (!*in_select) {
+                *in_select = 1;
+                *sel_dir = 1;
+                E.sel_startx = E.cursorx;
+                E.sel_starty = E.cursory;
+            }
+            moveCursor(key);
+            break;
+    }
+    if (*sel_dir == -1) {
+        E.sel_startx = E.cursorx;
+        E.sel_starty = E.cursory;
+    } else if (*sel_dir == 1) {
+        E.sel_endx = E.cursorx;
+        E.sel_endy = E.cursory;
+    }
+
+    if (E.sel_startx == E.sel_endx && E.sel_starty == E.sel_endy) {
+        *in_select = 0;
+    }
+}
+
 
 void processKeyPress() {
     //Processes key presses and performs their functions
     static int quit_times = QUIT_TIMES;
+    static int in_select = 0;
+    static int sel_dir = 0;
     int c = editorReadKey();
 
     switch (c) {
@@ -1185,6 +1287,19 @@ void processKeyPress() {
         case ARROW_DOWN:
         case ARROW_RIGHT:
             moveCursor(c);
+            if (in_select) {
+                in_select = 0;
+                E.sel_startx = E.sel_starty = E.sel_endx = E.sel_endy = 0;
+            }
+            setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
+            break;
+
+        case ALT_RIGHT:
+        case ALT_DOWN:
+        case ALT_LEFT:
+        case ALT_UP:
+            moveSelect(c, &in_select, &sel_dir);
+            setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
         case CTRL_KEY('l'):
@@ -1214,6 +1329,11 @@ void startEditor() {
     E.status[0] = '\0';
     E.status_time = 0;
     E.syntax = NULL;
+
+    E.sel_startx = 0;
+    E.sel_starty = 0;
+    E.sel_endx = 0;
+    E.sel_endy = 0;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
