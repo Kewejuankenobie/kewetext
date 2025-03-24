@@ -17,7 +17,7 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define KEWETEXT_VERSION "0.0.1"
-#define TAB_STOP 8
+#define TAB_STOP 4
 #define QUIT_TIMES 2
 
 enum editorKey {
@@ -85,6 +85,7 @@ struct editorConfig {
     int screen_cols;
     int num_rows;
     int dirty;
+    int help;
     erow* row;
     char* filename;
     char* copied_text;
@@ -969,7 +970,7 @@ void scroll() {
 int drawSelect(struct appendbuf* abuf, int charx, int chary) {
     //Add characters from start to not including end to selected chars
     //Highlight selected characters in a color or inverse (All selecting should do)
-    if (E.sel_startx == E.sel_starty == E.sel_endx == E.sel_endy) {
+    if (E.sel_startx == E.sel_endx && E.sel_starty == E.sel_endy) {
         return 0;
     }
     if (!(E.cursorx == charx && E.cursory == chary) && //Do not invert the cursor as included in selection
@@ -1117,6 +1118,18 @@ void drawMessage(struct appendbuf* abuf) {
     }
 }
 
+void drawHelp(struct appendbuf* abuf) {
+
+    char helpString[] = "Help Page\r\n\r\nCtrl-G: Help, Ctrl-Q: Quit, Ctrl-S: Save\r\n"
+                        "Ctrl-N: Save As, Ctrl-C: Copy, Ctrl-V: Paste\r\n"
+                        "Arrows to Move, Alt-Arrows to Select\r\n\r\n"
+                        "Press Ctrl-G To Exit Help";
+    int length = strlen(helpString);
+
+    appendBufAppend(abuf, "\x1b[2J", 4);
+    appendBufAppend(abuf, helpString, length);
+}
+
 void refreshScreen() {
     //Refreshes all drawn elements, cursor position, prints out append buffer 
     scroll();
@@ -1127,16 +1140,21 @@ void refreshScreen() {
     appendBufAppend(&abuf, "\x1b[?25l", 6);
     appendBufAppend(&abuf, "\x1b[H", 3);
 
-    drawRows(&abuf);
-    drawStatusBar(&abuf);
-    drawMessage(&abuf);
+    if (E.help) {
+        drawHelp(&abuf);
+    } else {
 
-    char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
-        (E.cursory - E.rowoff) + 1, (E.renderx - E.coloff) + 1);
-    appendBufAppend(&abuf, buf, strlen(buf));
+        drawRows(&abuf);
+        drawStatusBar(&abuf);
+        drawMessage(&abuf);
 
-    appendBufAppend(&abuf, "\x1b[?25h", 6);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
+            (E.cursory - E.rowoff) + 1, (E.renderx - E.coloff) + 1);
+        appendBufAppend(&abuf, buf, strlen(buf));
+
+        appendBufAppend(&abuf, "\x1b[?25h", 6);
+    }
 
     write(STDOUT_FILENO, abuf.buffer, abuf.length);
     appendBufFree(&abuf);
@@ -1320,108 +1338,120 @@ void processKeyPress() {
     static int sel_dir = 0;
     int c = editorReadKey();
 
-    switch (c) {
-        case '\r':
-            resetSelect(&in_select);
-            editorInsertNewLine();
+    if (!E.help) {
+        switch (c) {
+            case '\r':
+                resetSelect(&in_select);
+                editorInsertNewLine();
             break;
 
-        case CTRL_KEY('Q'):
-            //free(E.copied_text);
-            if (E.dirty && quit_times > 0) {
-                setStatusMessage("Unsaved Changes. Press Ctrl-Q %d more times to quit", quit_times);
-                quit_times--;
-                return;
-            }
+            case CTRL_KEY('Q'):
+                //free(E.copied_text);
+                    if (E.dirty && quit_times > 0) {
+                        setStatusMessage("Unsaved Changes. Press Ctrl-Q %d more times to quit", quit_times);
+                        quit_times--;
+                        return;
+                    }
 
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
             break;
 
-        case CTRL_KEY('S'):
-            editorSaveFile(0);
-            break;
-
-        case CTRL_KEY('N'):
-            editorSaveFile(1);
-            break;
-
-        case CTRL_KEY('F'):
-            editorFind();
-            break;
-
-        case CTRL_KEY('C'):
-            editorCopy();
-            break;
-
-        case CTRL_KEY('V'):
-            resetSelect(&in_select);
-            editorPaste();
-            break;
-
-        case HOME:
-            E.cursorx = 0;
-            break;
-        case END:
-            if (E.cursory < E.num_rows) {
-                E.cursorx = E.row[E.cursory].size;
-            }
-            break;
-
-        case BACKSPACE:
-        case CTRL_KEY('h'):
-        case DELETE:
-            resetSelect(&in_select);
-            if (c == DELETE) {
-                moveCursor(ARROW_RIGHT);
-            }
-            editorDeleteChar();
-            break;
-
-        case PAGE_UP:
-        case PAGE_DOWN: {
-            if (c == PAGE_UP) {
-                E.cursory = E.rowoff;
-            } else if (c == PAGE_DOWN) {
-                E.cursory = E.rowoff + E.screen_rows - 1;
-                if (E.cursory >= E.num_rows) {
-                    E.cursory = E.num_rows;
+            case CTRL_KEY('S'):
+                if (!E.help) {
+                    editorSaveFile(0);
                 }
+            break;
+
+            case CTRL_KEY('N'):
+                editorSaveFile(1);
+            break;
+
+            case CTRL_KEY('F'):
+                editorFind();
+            break;
+
+            case CTRL_KEY('C'):
+                editorCopy();
+            break;
+
+            case CTRL_KEY('V'):
+                resetSelect(&in_select);
+                editorPaste();
+            break;
+
+            case CTRL_KEY('G'):
+                E.help = 1;
+            break;
+
+            case HOME:
+                E.cursorx = 0;
+            break;
+            case END:
+                if (E.cursory < E.num_rows) {
+                    E.cursorx = E.row[E.cursory].size;
+                }
+            break;
+
+            case BACKSPACE:
+            case CTRL_KEY('h'):
+            case DELETE:
+                resetSelect(&in_select);
+                if (c == DELETE) {
+                    moveCursor(ARROW_RIGHT);
+                }
+                editorDeleteChar();
+            break;
+
+            case PAGE_UP:
+            case PAGE_DOWN: {
+                if (c == PAGE_UP) {
+                    E.cursory = E.rowoff;
+                } else if (c == PAGE_DOWN) {
+                    E.cursory = E.rowoff + E.screen_rows - 1;
+                    if (E.cursory >= E.num_rows) {
+                        E.cursory = E.num_rows;
+                    }
+                }
+
+                int times = E.screen_rows;
+                while (times--) {
+                    moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+                }
+                break;
             }
 
-            int times = E.screen_rows;
-            while (times--) {
-                moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-            }
+            case ARROW_UP:
+            case ARROW_LEFT:
+            case ARROW_DOWN:
+            case ARROW_RIGHT:
+                moveCursor(c);
+            resetSelect(&in_select);
+            //setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
+            break;
+
+            case ALT_RIGHT:
+            case ALT_DOWN:
+            case ALT_LEFT:
+            case ALT_UP:
+                moveSelect(c, &in_select, &sel_dir);
+           // setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
+            break;
+
+            case CTRL_KEY('l'):
+            case '\x1b':
+                break;
+
+            default:
+                resetSelect(&in_select);
+                editorInsertChar(c);
             break;
         }
-
-        case ARROW_UP:
-        case ARROW_LEFT:
-        case ARROW_DOWN:
-        case ARROW_RIGHT:
-            moveCursor(c);
-            resetSelect(&in_select);
-            setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
-            break;
-
-        case ALT_RIGHT:
-        case ALT_DOWN:
-        case ALT_LEFT:
-        case ALT_UP:
-            moveSelect(c, &in_select, &sel_dir);
-            setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
-            break;
-
-        case CTRL_KEY('l'):
-        case '\x1b':
-            break;
-
-        default:
-            resetSelect(&in_select);
-            editorInsertChar(c);
-            break;
+    } else {
+        if (c == CTRL_KEY('G')) {
+            E.help = 0;
+        }
     }
     quit_times = QUIT_TIMES;
 }
@@ -1443,6 +1473,7 @@ void startEditor() {
     E.status[0] = '\0';
     E.status_time = 0;
     E.syntax = NULL;
+    E.help = 0;
 
     E.sel_startx = 0;
     E.sel_starty = 0;
@@ -1464,8 +1495,7 @@ int main(int argc, char *argv[]) {
         editorOpen(argv[1]);
     }
 
-    setStatusMessage("HELP: Ctrl-S: Save, Ctrl-N: Save New File, Ctrl-F: Find, "
-                     "Ctrl-C: Copy, Ctrl-V: Paste, Ctrl-Q: Quit, Alt-Arrows to select");
+    setStatusMessage("Press Ctrl-G for Help");
 
     while (1) {
         refreshScreen();
