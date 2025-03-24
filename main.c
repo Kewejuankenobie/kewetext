@@ -87,6 +87,7 @@ struct editorConfig {
     int dirty;
     erow* row;
     char* filename;
+    char* copied_text;
     char status[80];
     time_t status_time;
     struct editorSyntax* syntax;
@@ -843,6 +844,79 @@ void editorSaveFile(int newFile) {
     setStatusMessage("Can't save, IO error: %s", strerror(errno));
 }
 
+//COPY
+
+void editorCopy() {
+    //Copies text to a string
+    int r;
+    int start;
+    int end;
+    int copyLen = 0;
+    //First, get the size to allocate
+    for (r = E.sel_starty; r < E.sel_endy + 1; ++r) {
+        if (r == E.sel_starty) {
+            start = E.sel_startx;
+        } else {
+            start = 0;
+        }
+        if (r == E.sel_endy) {
+            end = E.sel_endx;
+        } else {
+            end = E.row[r].size - 1;
+        }
+        copyLen += end + 1 - start;
+        if (end == E.row[r].size - 1) {
+            ++copyLen;
+        }
+    }
+
+    //Next, copy over all required text
+    free(E.copied_text);
+    E.copied_text = malloc(copyLen);
+    char* rowItr = E.copied_text;
+    for (r = E.sel_starty; r < E.sel_endy + 1; ++r) {
+        if (r == E.sel_starty) {
+            start = E.sel_startx;
+        } else {
+            start = 0;
+        }
+        if (r == E.sel_endy) {
+            end = E.sel_endx;
+        } else {
+            //Minus 1 cause \0
+            end = E.row[r].size - 1;
+        }
+
+        memcpy(rowItr, &E.row[r].chars[start], end + 1 - start);
+        rowItr += end + 1 - start;
+        if (r == E.sel_endy) {
+            *rowItr = '\0';
+        } else {
+            *rowItr = '\n';
+            ++rowItr;
+        }
+    }
+
+    setStatusMessage("Copied %d bytes", copyLen);
+}
+
+//PASTE
+
+void editorPaste() {
+    //Pasts the contents of copied text at the cursor position
+    int copyLen = strlen(E.copied_text);
+    int i;
+    for (i = 0; i < copyLen; ++i) {
+        if (E.copied_text[i] == '\n') {
+            editorInsertNewLine();
+        } else {
+            editorInsertChar(E.copied_text[i]);
+        }
+    }
+
+    setStatusMessage("Pasted %d characters", copyLen);
+}
+
 //APPEND BUFFER
 struct appendbuf {
     //Buffer of chars to add to a row
@@ -898,10 +972,11 @@ int drawSelect(struct appendbuf* abuf, int charx, int chary) {
     if (E.sel_startx == E.sel_starty == E.sel_endx == E.sel_endy) {
         return 0;
     }
-    if (((E.sel_starty < chary) && (chary < E.sel_endy)) || //Middle
-        ((E.sel_starty == chary) && (chary == E.sel_endy) && (E.sel_startx <= charx) && (charx < E.sel_endx)) || //Same start/end row
+    if (!(E.cursorx == charx && E.cursory == chary) && //Do not invert the cursor as included in selection
+        (((E.sel_starty < chary) && (chary < E.sel_endy)) || //Middle
+        ((E.sel_starty == chary) && (chary == E.sel_endy) && (E.sel_startx <= charx) && (charx <= E.sel_endx)) || //Same start/end row
         ((E.sel_starty == chary) && (chary != E.sel_endy) && (E.sel_startx <= charx)) || //Start row
-        ((chary == E.sel_endy) && (E.sel_starty != chary) && (charx < E.sel_endx))) {//End row
+        ((chary == E.sel_endy) && (E.sel_starty != chary) && (charx <= E.sel_endx)))) {//End row
         appendBufAppend(abuf, "\x1b[7m", 4);
         return 1;
     }
@@ -1173,7 +1248,18 @@ void moveCursor(int key) {
     }
 }
 
+void swapStartEndSelect() {
+    //Swaps the start and end positions in selection
+    int tmpx = E.sel_startx;
+    int tmpy = E.sel_starty;
+    E.sel_startx = E.sel_endx;
+    E.sel_starty = E.sel_endy;
+    E.sel_endx = tmpx;
+    E.sel_endy = tmpy;
+}
+
 void moveSelect(int key, int* in_select, int* sel_dir) {
+    //Moves the selection window
     switch (key) {
         case ALT_UP:
         case ALT_LEFT:
@@ -1198,9 +1284,17 @@ void moveSelect(int key, int* in_select, int* sel_dir) {
             break;
     }
     if (*sel_dir == -1) {
+        if (key == ALT_DOWN) {
+            *sel_dir = 1;
+            swapStartEndSelect();
+        }
         E.sel_startx = E.cursorx;
         E.sel_starty = E.cursory;
     } else if (*sel_dir == 1) {
+        if (key == ALT_UP) {
+            *sel_dir = -1;
+            swapStartEndSelect();
+        }
         E.sel_endx = E.cursorx;
         E.sel_endy = E.cursory;
     }
@@ -1210,6 +1304,14 @@ void moveSelect(int key, int* in_select, int* sel_dir) {
     }
 }
 
+void resetSelect(int* in_select) {
+    //Sets selection to not happening (except the character you are on)
+    if (*in_select) {
+        *in_select = 0;
+    }
+    E.sel_startx = E.sel_endx = E.cursorx;
+    E.sel_starty = E.sel_endy = E.cursory;
+}
 
 void processKeyPress() {
     //Processes key presses and performs their functions
@@ -1220,15 +1322,18 @@ void processKeyPress() {
 
     switch (c) {
         case '\r':
+            resetSelect(&in_select);
             editorInsertNewLine();
             break;
 
         case CTRL_KEY('Q'):
+            //free(E.copied_text);
             if (E.dirty && quit_times > 0) {
                 setStatusMessage("Unsaved Changes. Press Ctrl-Q %d more times to quit", quit_times);
                 quit_times--;
                 return;
             }
+
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
@@ -1246,6 +1351,15 @@ void processKeyPress() {
             editorFind();
             break;
 
+        case CTRL_KEY('C'):
+            editorCopy();
+            break;
+
+        case CTRL_KEY('V'):
+            resetSelect(&in_select);
+            editorPaste();
+            break;
+
         case HOME:
             E.cursorx = 0;
             break;
@@ -1258,6 +1372,7 @@ void processKeyPress() {
         case BACKSPACE:
         case CTRL_KEY('h'):
         case DELETE:
+            resetSelect(&in_select);
             if (c == DELETE) {
                 moveCursor(ARROW_RIGHT);
             }
@@ -1287,10 +1402,7 @@ void processKeyPress() {
         case ARROW_DOWN:
         case ARROW_RIGHT:
             moveCursor(c);
-            if (in_select) {
-                in_select = 0;
-                E.sel_startx = E.sel_starty = E.sel_endx = E.sel_endy = 0;
-            }
+            resetSelect(&in_select);
             setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
@@ -1307,6 +1419,7 @@ void processKeyPress() {
             break;
 
         default:
+            resetSelect(&in_select);
             editorInsertChar(c);
             break;
     }
@@ -1326,6 +1439,7 @@ void startEditor() {
     E.dirty = 0;
     E.row = NULL;
     E.filename = NULL;
+    E.copied_text = NULL;
     E.status[0] = '\0';
     E.status_time = 0;
     E.syntax = NULL;
@@ -1350,7 +1464,8 @@ int main(int argc, char *argv[]) {
         editorOpen(argv[1]);
     }
 
-    setStatusMessage("HELP: Ctrl-S: Save, Ctrl-N: Save New File, CTRL-F: Find, Ctrl-Q: Quit");
+    setStatusMessage("HELP: Ctrl-S: Save, Ctrl-N: Save New File, Ctrl-F: Find, "
+                     "Ctrl-C: Copy, Ctrl-V: Paste, Ctrl-Q: Quit, Alt-Arrows to select");
 
     while (1) {
         refreshScreen();
