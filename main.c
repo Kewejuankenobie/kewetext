@@ -19,6 +19,7 @@
 #define KEWETEXT_VERSION "0.0.1"
 #define TAB_STOP 4
 #define QUIT_TIMES 2
+#define AUTO_INDENT 1
 
 enum editorKey {
     BACKSPACE = 127,
@@ -68,6 +69,7 @@ typedef struct erow {
     int index;
     int size;
     int rsize;
+    int indent;
     char* chars;
     char* render;
     unsigned char* highlight;
@@ -489,6 +491,25 @@ void editorSelectSyntaxHighlight() {
 
 //ROW OPS
 
+void setRowIndent(erow* row) {
+    char *c = &row->chars[0];
+    int consecSpace = 0;
+    row->indent = 0;
+    while (isspace(*c) || *c == '\t') {
+        if (*c == '\t') {
+            consecSpace = 0;
+            row->indent++;
+        } else if (isspace(*c)) {
+            consecSpace++;
+            if (consecSpace == TAB_STOP) {
+                row->indent++;
+            }
+        }
+        ++c;
+    }
+    setStatusMessage("TABS: %d", row->indent);
+}
+
 int rowCursorXToRenderX(erow* row, int cursorx) {
     //Converts cursor x to render x
     int renderx = 0;
@@ -565,7 +586,7 @@ void editorInsertRow(int rowAt, char* text, size_t len) {
     }
 
     E.row[rowAt].index = rowAt;
-
+    E.row[rowAt].indent = 0;
     E.row[rowAt].size = len;
     E.row[rowAt].chars = malloc(len + 1);
     memcpy(E.row[rowAt].chars, text, len);
@@ -644,6 +665,7 @@ void editorInsertChar(int c) {
         editorInsertRow(E.num_rows, "", 0);
     }
     rowInsertChar(&E.row[E.cursory], E.cursorx, c);
+    setRowIndent(&E.row[E.cursory]);
     E.cursorx++;
 }
 
@@ -661,6 +683,15 @@ void editorInsertNewLine() {
     }
     E.cursory++;
     E.cursorx = 0;
+
+    if (AUTO_INDENT == 1) {
+        int indent = E.row[E.cursory - 1].indent;
+        E.row[E.cursory].indent = indent;
+        int i;
+        for (i = 0; i < indent; i++) {
+            editorInsertChar('\t');
+        }
+    }
 }
 
 void editorDeleteChar() {
@@ -1359,9 +1390,7 @@ void processKeyPress() {
             break;
 
             case CTRL_KEY('S'):
-                if (!E.help) {
-                    editorSaveFile(0);
-                }
+                editorSaveFile(0);
             break;
 
             case CTRL_KEY('N'):
@@ -1486,6 +1515,17 @@ void startEditor() {
     E.screen_rows -= 2;
 }
 
+void setIndents() {
+    if (AUTO_INDENT != 1) {
+        return;
+    }
+    int i;
+    for (i = 0; i < E.num_rows; i++) {
+        erow* row = &E.row[i];
+        setRowIndent(row);
+    }
+}
+
 
 int main(int argc, char *argv[]) {
     //kewetext main code starts, and loops through editor functions
@@ -1493,6 +1533,7 @@ int main(int argc, char *argv[]) {
     startEditor();
     if (argc > 1) {
         editorOpen(argv[1]);
+        setIndents();
     }
 
     setStatusMessage("Press Ctrl-G for Help");
