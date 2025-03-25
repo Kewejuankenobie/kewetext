@@ -503,11 +503,11 @@ void setRowIndent(erow* row) {
             consecSpace++;
             if (consecSpace == TAB_STOP) {
                 row->indent++;
+                consecSpace = 0;
             }
         }
         ++c;
     }
-    setStatusMessage("TABS: %d", row->indent);
 }
 
 int rowCursorXToRenderX(erow* row, int cursorx) {
