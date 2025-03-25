@@ -14,12 +14,12 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include "configuration.h"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define KEWETEXT_VERSION "0.0.1"
-#define TAB_STOP 4
-#define QUIT_TIMES 2
-#define AUTO_INDENT 1
+
+struct Configuration config;
 
 enum editorKey {
     BACKSPACE = 127,
@@ -501,7 +501,7 @@ void setRowIndent(erow* row) {
             row->indent++;
         } else if (isspace(*c)) {
             consecSpace++;
-            if (consecSpace == TAB_STOP) {
+            if (consecSpace == config.tab_stop) {
                 row->indent++;
                 consecSpace = 0;
             }
@@ -516,7 +516,7 @@ int rowCursorXToRenderX(erow* row, int cursorx) {
     int k;
     for (k = 0; k < cursorx; k++) {
         if (row->chars[k] == '\t') {
-            renderx += (TAB_STOP - 1) - (renderx % TAB_STOP);
+            renderx += (config.tab_stop - 1) - (renderx % config.tab_stop);
         }
         renderx++;
     }
@@ -529,7 +529,7 @@ int rowRenderXToCursorX(erow* row, int renderx) {
     int k;
     for (k = 0; k < renderx; k++) {
         if (row->chars[k] == '\t') {
-            cur_renderx += (TAB_STOP - 1) - (cur_renderx % TAB_STOP);
+            cur_renderx += (config.tab_stop - 1) - (cur_renderx % config.tab_stop);
         }
         cur_renderx++;
         if (cur_renderx > renderx) {
@@ -551,14 +551,14 @@ void editorUpdateRow(erow* row) {
     }
 
     free(row->render);
-    row->render = malloc(row->size + tabs * (TAB_STOP - 1) + 1);
+    row->render = malloc(row->size + tabs * (config.tab_stop - 1) + 1);
 
     int renderIndex = 0;
     for (j = 0; j < row->size; j++) {
         //Adds characters to render index and converts tabs to a number of spaces to add
         if (row->chars[j] == '\t') {
             row->render[renderIndex++] = ' ';
-            while (renderIndex % TAB_STOP != 0) {
+            while (renderIndex % config.tab_stop != 0) {
                 row->render[renderIndex++] = ' ';
             }
         } else {
@@ -684,7 +684,7 @@ void editorInsertNewLine() {
     E.cursory++;
     E.cursorx = 0;
 
-    if (AUTO_INDENT == 1) {
+    if (config.auto_indent == 1) {
         int indent = E.row[E.cursory - 1].indent;
         E.row[E.cursory].indent = indent;
         int i;
@@ -1364,7 +1364,7 @@ void resetSelect(int* in_select) {
 
 void processKeyPress() {
     //Processes key presses and performs their functions
-    static int quit_times = QUIT_TIMES;
+    static int quit_times = 0;
     static int in_select = 0;
     static int sel_dir = 0;
     int c = editorReadKey();
@@ -1379,7 +1379,8 @@ void processKeyPress() {
             case CTRL_KEY('Q'):
                 //free(E.copied_text);
                     if (E.dirty && quit_times > 0) {
-                        setStatusMessage("Unsaved Changes. Press Ctrl-Q %d more times to quit", quit_times);
+                        setStatusMessage("Unsaved Changes. Press Ctrl-Q %d more times to quit",
+                            quit_times);
                         quit_times--;
                         return;
                     }
@@ -1482,13 +1483,18 @@ void processKeyPress() {
             E.help = 0;
         }
     }
-    quit_times = QUIT_TIMES;
+    quit_times = config.quit_times;
 }
 
 //MAIN CODE
 
 void startEditor() {
     //Starts the text editor and initializes all editor variables
+
+    config.auto_indent = 0;
+    config.quit_times = 0;
+    config.tab_stop = 0;
+
     E.cursorx = 0;
     E.cursory = 0;
     E.renderx = 0;
@@ -1516,7 +1522,7 @@ void startEditor() {
 }
 
 void setIndents() {
-    if (AUTO_INDENT != 1) {
+    if (config.auto_indent != 1) {
         return;
     }
     int i;
@@ -1531,12 +1537,13 @@ int main(int argc, char *argv[]) {
     //kewetext main code starts, and loops through editor functions
     enableRawMode();
     startEditor();
+    loadConfig(&config);
     if (argc > 1) {
         editorOpen(argv[1]);
         setIndents();
     }
 
-    setStatusMessage("Press Ctrl-G for Help");
+    setStatusMessage("Press Ctrl-G for Help%d%d%d", config.tab_stop, config.quit_times, config.auto_indent);
 
     while (1) {
         refreshScreen();

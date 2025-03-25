@@ -1,0 +1,7 @@
+#Configuration File For Kewetext
+#Number of spaces per Tab
+TAB_STOP=4
+#Amount of times to press quit for quiting while unsaved
+QUIT_TIMES=2
+#Whether auto indent is on
+AUTO_INDENT=1

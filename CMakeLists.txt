@@ -4,4 +4,8 @@ project(kewetext C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(kewetext main.c)
+add_compile_options(-lconfig)
+
+add_executable(kewetext main.c
+        configuration.h
+        configuration.c)
