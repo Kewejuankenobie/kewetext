@@ -23,6 +23,10 @@ void loadConfig(struct Configuration* config) {
             config->quit_times = value;
         } else if (strcmp(token, "AUTO_INDENT") == 0) {
             config->auto_indent = value;
+        } else if (strcmp(token, "DEFAULT_UNDO") == 0) {
+            config->default_undo = value;
+        } else if (strcmp(token, "INF_UNDO") == 0) {
+            config->inf_undo = value;
         }
     }
 

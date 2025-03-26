@@ -14,7 +14,6 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
-#include <obstack.h>
 #include "configuration.h"
 #include "stack.h"
 
@@ -37,7 +36,8 @@ enum editorKey {
     PAGE_UP,
     PAGE_DOWN,
     HOME,
-    END
+    END,
+    BACKNEWROW
 };
 
 enum editorHighlight {
@@ -49,6 +49,14 @@ enum editorHighlight {
     HL_KEYWORD1,
     HL_KEYWORD2,
     HL_MATCH
+};
+
+enum editorState {
+    STATE_KEY = 1,
+    STATE_MOVE,
+    STATE_BACK,
+    STATE_DELETE,
+    STATE_PASTE
 };
 
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
@@ -90,6 +98,7 @@ struct editorConfig {
     int num_rows;
     int dirty;
     int help;
+    int state;
     erow* row;
     char* filename;
     char* copied_text;
@@ -151,6 +160,8 @@ struct editorSyntax HLDB[] = {
 void setStatusMessage(const char* message, ...);
 void refreshScreen();
 char* editorPrompt(char* prompt, void (*callback) (char*, int));
+void moveCursor(int key);
+void moveSelect(int key, int* in_select, int* sel_dir);
 
 //TERMINAL
 
@@ -953,6 +964,73 @@ void editorPaste() {
     setStatusMessage("Pasted %d characters", copyLen);
 }
 
+//UNDO
+
+void editorUndo() {
+    int firstChar = peek(undo);
+    if (firstChar == -1) {
+        setStatusMessage("Nothing To Undo");
+        return;
+    }
+    E.sel_startx = E.sel_endx = E.cursorx;
+    E.sel_starty = E.sel_endy = E.cursory;
+    switch (firstChar) {
+        case BACKSPACE:
+        case BACKNEWROW:
+        int charItr;
+            while (pop(undo, &charItr) == 1) {
+                editorDeleteChar();
+                if (peek(undo) != firstChar) {
+                    break;
+                }
+            }
+            break;
+
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case ARROW_UP:
+        case ARROW_DOWN:
+            while (pop(undo, &firstChar) == 1) {
+                moveCursor(firstChar);
+                if ((peek(undo) < 1000) || (peek(undo) > 1003)) {
+                    break;
+                }
+            }
+            break;
+
+        case ALT_UP:
+        case ALT_DOWN:
+        case ALT_LEFT:
+        case ALT_RIGHT:
+            while (pop(undo, &firstChar) == 1) {
+                moveCursor(firstChar);
+                if ((peek(undo) < 1004) || (peek(undo) > 1007)) {
+                    break;
+                }
+            }
+            break;
+
+        case '\r':
+            while (pop(undo, &firstChar) == 1) {
+                editorInsertNewLine();
+                if (peek(undo) != '\r') {
+                    break;
+                }
+            }
+            break;
+
+        default:
+            while (pop(undo, &firstChar) == 1) {
+                editorInsertChar(firstChar);
+                if ((peek(undo) == '\r') || (peek(undo) == 127) ||
+                    (peek(undo) >= 1000)) {
+                    break;
+                }
+            }
+            break;
+    }
+}
+
 //APPEND BUFFER
 struct appendbuf {
     //Buffer of chars to add to a row
@@ -1366,17 +1444,48 @@ void resetSelect(int* in_select) {
     E.sel_starty = E.sel_endy = E.cursory;
 }
 
+void pushArrows(int c) {
+    switch (c) {
+        case ARROW_UP:
+            push(undo, ARROW_DOWN);
+        break;
+        case ARROW_LEFT:
+            push(undo, ARROW_RIGHT);
+        break;
+        case ARROW_DOWN:
+            push(undo, ARROW_UP);
+        break;
+        case ARROW_RIGHT:
+            push(undo, ARROW_LEFT);
+        break;
+        case ALT_UP:
+            push(undo, ALT_DOWN);
+        break;
+        case ALT_LEFT:
+            push(undo, ALT_RIGHT);
+        break;
+        case ALT_DOWN:
+            push(undo, ALT_UP);
+        break;
+        case ALT_RIGHT:
+            push(undo, ALT_LEFT);
+        break;
+    }
+}
+
 void processKeyPress() {
     //Processes key presses and performs their functions
     static int quit_times = 0;
     static int in_select = 0;
     static int sel_dir = 0;
+    static int undo_state = 0;
     int c = editorReadKey();
 
     if (!E.help) {
         switch (c) {
             case '\r':
                 resetSelect(&in_select);
+                push(undo, BACKNEWROW);
                 editorInsertNewLine();
             break;
 
@@ -1412,7 +1521,12 @@ void processKeyPress() {
             break;
 
             case CTRL_KEY('V'):
+                E.state = STATE_PASTE;
                 resetSelect(&in_select);
+                int i = 0;
+                for (i = 0; i < strlen(E.copied_text); ++i) {
+                    push(undo, BACKSPACE);
+                }
                 editorPaste();
             break;
 
@@ -1421,7 +1535,7 @@ void processKeyPress() {
             break;
 
             case CTRL_KEY('Z'):
-                //editorUndo();
+                editorUndo();
             break;
 
             case CTRL_KEY('R'):
@@ -1443,6 +1557,15 @@ void processKeyPress() {
                 resetSelect(&in_select);
                 if (c == DELETE) {
                     moveCursor(ARROW_RIGHT);
+                    push(undo, ARROW_LEFT);
+                    E.state = STATE_DELETE;
+                } else if (c == BACKSPACE) {
+                    E.state = STATE_BACK;
+                }
+                if (E.cursorx > 0) {
+                    push(undo, E.row[E.cursory].chars[E.cursorx - 1]);
+                } else {
+                    push(undo, '\r');
                 }
                 editorDeleteChar();
             break;
@@ -1469,8 +1592,10 @@ void processKeyPress() {
             case ARROW_LEFT:
             case ARROW_DOWN:
             case ARROW_RIGHT:
+                E.state = STATE_MOVE;
                 moveCursor(c);
             resetSelect(&in_select);
+            pushArrows(c);
             //setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
@@ -1478,7 +1603,9 @@ void processKeyPress() {
             case ALT_DOWN:
             case ALT_LEFT:
             case ALT_UP:
+                E.state = STATE_MOVE;
                 moveSelect(c, &in_select, &sel_dir);
+            pushArrows(c);
            // setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
@@ -1487,8 +1614,10 @@ void processKeyPress() {
                 break;
 
             default:
+                E.state = STATE_KEY;
                 resetSelect(&in_select);
                 editorInsertChar(c);
+                push(undo, BACKSPACE);
             break;
         }
     } else {
@@ -1515,6 +1644,7 @@ void startEditor() {
     E.coloff = 0;
     E.num_rows = 0;
     E.dirty = 0;
+    E.state = 0;
     E.row = NULL;
     E.filename = NULL;
     E.copied_text = NULL;
@@ -1527,10 +1657,6 @@ void startEditor() {
     E.sel_starty = 0;
     E.sel_endx = 0;
     E.sel_endy = 0;
-
-    undo = createStack(20);
-    push(undo, "Hello");
-    push(undo, "Worldy");
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
@@ -1552,10 +1678,14 @@ void setIndents() {
 /*
  * Writable actions to store in undo/redo trees:
  * 1. A line of text written
- * 2. Each movement to the next line written (ie, after writing on line 10, move to line 50 column 15, this is 1 undo)
+ * 2. Each movement to the next line written (ie, after writing on line 10, move to line 50 column 15, this is 1 undo) (Maybe not)
  * 3. New lines added
  * 4. All text pasted
  * 5. A line of text deleted
+ *
+ * How this works
+ * We will add every key typed to the undo stack
+ * When undoing, we will pop off the top of the stack untill we reach a different type of character
  */
 
 int main(int argc, char *argv[]) {
@@ -1563,13 +1693,13 @@ int main(int argc, char *argv[]) {
     enableRawMode();
     startEditor();
     loadConfig(&config);
+    undo = createStack(config.default_undo, config.inf_undo);
     if (argc > 1) {
         editorOpen(argv[1]);
         setIndents();
     }
-    char* s;
-    pop(undo, s);
-    setStatusMessage("Press Ctrl-G for Help %s, %s", peek(undo), s);
+
+    setStatusMessage("Press Ctrl-G for Help");
 
     while (1) {
         refreshScreen();

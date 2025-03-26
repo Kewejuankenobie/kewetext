@@ -8,45 +8,52 @@
 #include <stdlib.h>
 #include <string.h>
 
-Stack* createStack(int size) {
-    Stack* stack = (Stack*)malloc(sizeof(Stack));
+Stack* createStack(int size, int canChange) {
+    Stack* stack = malloc(sizeof(Stack));
     stack->capacity = size;
     stack->top = -1;
-    stack->data = (char**)malloc(size * sizeof(char*));
+    stack->data = (int*)malloc(size * sizeof(int));
+    stack->can_change_size = canChange;
+    return stack;
 }
 
 void destroyStack(Stack* stack) {
-    int i;
-    for (i = 0; i < stack->top + 1; i++) {
-        free(stack->data[i]);
-    }
     free(stack->data);
     free(stack);
 }
 
-int stackSize(Stack* stack) {
-    return stack->top + 1;
-}
-
-int push(Stack* stack, char* str) {
-    if (stack->top == stack->capacity - 1) {
-        return 0;
+int push(Stack* stack, int keyAdded) {
+    if (stack->top >= stack->capacity - 1) {
+        if (stack->can_change_size == 1) {
+            stack->data = (int*)realloc(stack->data, stack->capacity * 2 * sizeof(int));
+            stack->capacity *= 2;
+            if (!stack->data) {
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            int* tmp = malloc(stack->capacity * sizeof(int));
+            memcpy(tmp, &stack->data[stack->capacity / 2 - 1], (stack->capacity * 2));
+            stack->top = stack->capacity / 2 - 1;
+            free(stack->data);
+            stack->data = tmp;
+        }
     }
-    stack->data[++stack->top] = malloc(strlen(str) + 1);
-    memcpy(stack->data[stack->top], str, strlen(str) + 1);
+    stack->data[++stack->top] = keyAdded;
     return 1;
 }
 
-int pop(Stack* stack, char* str) {
+int pop(Stack* stack, int* keyRecived) {
     if (stack->top == -1) {
         return 0;
     }
-    memmove(str, stack->data[stack->top], strlen(stack->data[stack->top]));
-    free(stack->data[stack->top]);
+    *keyRecived = stack->data[stack->top];
     --stack->top;
     return 1;
 }
 
-char* peek(Stack* stack) {
+int peek(Stack* stack) {
+    if (stack->top == -1) {
+        return -1;
+    }
     return stack->data[stack->top];
 }

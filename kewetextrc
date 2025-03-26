@@ -5,3 +5,7 @@ TAB_STOP=4
 QUIT_TIMES=2
 #Whether auto indent is on
 AUTO_INDENT=1
+#Default key presses to be stored in undo
+DEFAULT_UNDO=200
+#Whether to have infinite undos
+INF_UNDO = 0

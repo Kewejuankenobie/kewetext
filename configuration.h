@@ -13,6 +13,8 @@ struct Configuration {
     int tab_stop;
     int quit_times;
     int auto_indent;
+    int default_undo;
+    int inf_undo;
 };
 
 void loadConfig(struct Configuration* config);

@@ -5,17 +5,18 @@
 #ifndef STACK_H
 #define STACK_H
 
+//Integer Stack Data Structure used to store the integer values of key presses
+
 typedef struct Stack {
-    char** data;
-    int top, capacity;
+    int* data;
+    int top, capacity, can_change_size;
 } Stack;
 
-Stack* createStack(int size);
+Stack* createStack(int size, int canChange);
 void destroyStack(Stack* stack);
-int stackSize(Stack* stack);
-int push(Stack* stack, char* str);
-int pop(Stack* stack, char* str);
-char* peek(Stack* stack);
+int push(Stack* stack, int keyAdded);
+int pop(Stack* stack, int* keyRecived);
+int peek(Stack* stack);
 
 
 #endif //STACK_H
