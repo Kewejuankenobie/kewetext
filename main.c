@@ -14,7 +14,9 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <obstack.h>
 #include "configuration.h"
+#include "stack.h"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define KEWETEXT_VERSION "0.0.1"
@@ -104,6 +106,8 @@ struct editorConfig {
 };
 
 struct editorConfig E;
+
+Stack* undo;
 
 //FILETYPES
 char* C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
@@ -1385,6 +1389,7 @@ void processKeyPress() {
                         return;
                     }
 
+            destroyStack(undo);
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
@@ -1413,6 +1418,14 @@ void processKeyPress() {
 
             case CTRL_KEY('G'):
                 E.help = 1;
+            break;
+
+            case CTRL_KEY('Z'):
+                //editorUndo();
+            break;
+
+            case CTRL_KEY('R'):
+                //editorRedo();
             break;
 
             case HOME:
@@ -1515,6 +1528,10 @@ void startEditor() {
     E.sel_endx = 0;
     E.sel_endy = 0;
 
+    undo = createStack(20);
+    push(undo, "Hello");
+    push(undo, "Worldy");
+
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
     }
@@ -1532,6 +1549,14 @@ void setIndents() {
     }
 }
 
+/*
+ * Writable actions to store in undo/redo trees:
+ * 1. A line of text written
+ * 2. Each movement to the next line written (ie, after writing on line 10, move to line 50 column 15, this is 1 undo)
+ * 3. New lines added
+ * 4. All text pasted
+ * 5. A line of text deleted
+ */
 
 int main(int argc, char *argv[]) {
     //kewetext main code starts, and loops through editor functions
@@ -1542,8 +1567,9 @@ int main(int argc, char *argv[]) {
         editorOpen(argv[1]);
         setIndents();
     }
-
-    setStatusMessage("Press Ctrl-G for Help%d%d%d", config.tab_stop, config.quit_times, config.auto_indent);
+    char* s;
+    pop(undo, s);
+    setStatusMessage("Press Ctrl-G for Help %s, %s", peek(undo), s);
 
     while (1) {
         refreshScreen();

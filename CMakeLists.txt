@@ -8,4 +8,6 @@ add_compile_options(-lconfig)
 
 add_executable(kewetext main.c
         configuration.h
-        configuration.c)
+        configuration.c
+        stack.h
+        stack.c)
