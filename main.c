@@ -37,7 +37,8 @@ enum editorKey {
     PAGE_DOWN,
     HOME,
     END,
-    BACKNEWROW
+    BACKNEWROW,
+    DELETEINV
 };
 
 enum editorHighlight {
@@ -49,14 +50,6 @@ enum editorHighlight {
     HL_KEYWORD1,
     HL_KEYWORD2,
     HL_MATCH
-};
-
-enum editorState {
-    STATE_KEY = 1,
-    STATE_MOVE,
-    STATE_BACK,
-    STATE_DELETE,
-    STATE_PASTE
 };
 
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
@@ -117,6 +110,9 @@ struct editorConfig {
 struct editorConfig E;
 
 Stack* undo;
+Stack* redo;
+Stack* undoPageKeysY;
+Stack* undoPageKeysX;
 
 //FILETYPES
 char* C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
@@ -162,6 +158,8 @@ void refreshScreen();
 char* editorPrompt(char* prompt, void (*callback) (char*, int));
 void moveCursor(int key);
 void moveSelect(int key, int* in_select, int* sel_dir);
+void pushArrows(Stack* stack, int key);
+void processPageKeys(Stack* stack, int c);
 
 //TERMINAL
 
@@ -684,7 +682,7 @@ void editorInsertChar(int c) {
     E.cursorx++;
 }
 
-void editorInsertNewLine() {
+void editorInsertNewLine(int isStackSwaping) {
     //Inserts a new line in the editor based on cursor position
     if (E.cursorx == 0) {
         editorInsertRow(E.cursory, "", 0);
@@ -699,7 +697,7 @@ void editorInsertNewLine() {
     E.cursory++;
     E.cursorx = 0;
 
-    if (config.auto_indent == 1) {
+    if ((config.auto_indent == 1) && !isStackSwaping) {
         int indent = E.row[E.cursory - 1].indent;
         E.row[E.cursory].indent = indent;
         int i;
@@ -801,7 +799,7 @@ void editorFind() {
 
     if (query) {
         free(query);
-    } else {
+    } else if (config.cursor_save) {
         E.cursorx = save_cursorx;
         E.cursory = save_cursory;
         E.rowoff = save_rowoff;
@@ -955,7 +953,7 @@ void editorPaste() {
     int i;
     for (i = 0; i < copyLen; ++i) {
         if (E.copied_text[i] == '\n') {
-            editorInsertNewLine();
+            editorInsertNewLine(0);
         } else {
             editorInsertChar(E.copied_text[i]);
         }
@@ -964,12 +962,13 @@ void editorPaste() {
     setStatusMessage("Pasted %d characters", copyLen);
 }
 
-//UNDO
+//UNDO AND REDO
 
-void editorUndo() {
-    int firstChar = peek(undo);
+void editorSwapStacks(Stack* source, Stack* dest) {
+    //Does the top operation of the source stack and stores the inverse of that in the dest stack
+    int firstChar = peek(source);
     if (firstChar == -1) {
-        setStatusMessage("Nothing To Undo");
+        setStatusMessage("Nothing To Do");
         return;
     }
     E.sel_startx = E.sel_endx = E.cursorx;
@@ -977,10 +976,20 @@ void editorUndo() {
     switch (firstChar) {
         case BACKSPACE:
         case BACKNEWROW:
+        case DELETE:
         int charItr;
-            while (pop(undo, &charItr) == 1) {
+            while (pop(source, &charItr) == 1) {
+                if (firstChar == DELETE || charItr == DELETE) {
+                    moveCursor(ARROW_RIGHT);
+                    push(undo, DELETEINV);
+                }
+                if (E.cursorx > 0) {
+                    push(dest, E.row[E.cursory].chars[E.cursorx - 1]);
+                } else {
+                    push(dest, '\r');
+                }
                 editorDeleteChar();
-                if (peek(undo) != firstChar) {
+                if (peek(source) != firstChar) {
                     break;
                 }
             }
@@ -990,9 +999,11 @@ void editorUndo() {
         case ARROW_RIGHT:
         case ARROW_UP:
         case ARROW_DOWN:
-            while (pop(undo, &firstChar) == 1) {
-                moveCursor(firstChar);
-                if ((peek(undo) < 1000) || (peek(undo) > 1003)) {
+        int arrowItr;
+            while (pop(source, &arrowItr) == 1) {
+                pushArrows(dest, arrowItr);
+                moveCursor(arrowItr);
+                if ((peek(source) < 1000) || (peek(source) > 1003)) {
                     break;
                 }
             }
@@ -1002,34 +1013,81 @@ void editorUndo() {
         case ALT_DOWN:
         case ALT_LEFT:
         case ALT_RIGHT:
-            while (pop(undo, &firstChar) == 1) {
-                moveCursor(firstChar);
-                if ((peek(undo) < 1004) || (peek(undo) > 1007)) {
+        int arrowItr2;
+            while (pop(source, &arrowItr2) == 1) {
+                pushArrows(dest, arrowItr2);
+                moveCursor(arrowItr2);
+                if ((peek(source) < 1004) || (peek(source) > 1007)) {
                     break;
                 }
             }
             break;
 
+        case PAGE_UP:
+        case PAGE_DOWN:
+            while (pop(source, &firstChar) == 1) {
+                if (dest == undo) {
+                    push(undoPageKeysY, E.cursory);
+                    push(undoPageKeysX, E.cursorx);
+                }
+                processPageKeys(dest, firstChar);
+                if (dest == redo) {
+                    pop(undoPageKeysY, &E.cursory);
+                    pop(undoPageKeysX, &E.cursorx);
+                }
+                if (peek(source) != firstChar) {
+                    break;
+                }
+            }
+        break;
+
         case '\r':
-            while (pop(undo, &firstChar) == 1) {
-                editorInsertNewLine();
-                if (peek(undo) != '\r') {
+            while (pop(source, &firstChar) == 1) {
+                editorInsertNewLine(1);
+                if (peek(source) == DELETEINV) {
+                    push(dest, DELETE);
+                    pop(source, &firstChar);
+                    moveCursor(ARROW_LEFT);
+                } else {
+                    push(dest, BACKNEWROW);
+                }
+                if (config.auto_indent) {
+                    int i;
+                    for (i = 0; i < E.row[E.cursory].indent; ++i) {
+                        push(dest, BACKSPACE);
+                    }
+                }
+                if (peek(source) != '\r') {
                     break;
                 }
             }
             break;
 
         default:
-            while (pop(undo, &firstChar) == 1) {
+            while (pop(source, &firstChar) == 1) {
                 editorInsertChar(firstChar);
-                if ((peek(undo) == '\r') || (peek(undo) == 127) ||
-                    (peek(undo) >= 1000)) {
+                if (peek(source) == DELETEINV) {
+                    push(dest, DELETE);
+                    pop(source, &firstChar);
+                    moveCursor(ARROW_LEFT);
+                } else {
+                    push(dest, BACKSPACE);
+                }
+                if ((peek(source) == '\r') || (peek(source) == 127) ||
+                    (peek(source) >= 1000)) {
                     break;
                 }
             }
             break;
     }
 }
+
+//REDO
+
+void editorRedo() {
+
+}
+
 
 //APPEND BUFFER
 struct appendbuf {
@@ -1233,10 +1291,11 @@ void drawMessage(struct appendbuf* abuf) {
 
 void drawHelp(struct appendbuf* abuf) {
 
-    char helpString[] = "Help Page\r\n\r\nCtrl-G: Help, Ctrl-Q: Quit, Ctrl-S: Save\r\n"
-                        "Ctrl-N: Save As, Ctrl-C: Copy, Ctrl-V: Paste\r\n"
-                        "Arrows to Move, Alt-Arrows to Select\r\n\r\n"
-                        "Press Ctrl-G To Exit Help";
+    char helpString[] = "\x1b[1m""Help Page\x1b[22m""\r\n\r\n"
+                        "Ctrl-G: Help, Ctrl-Q: Quit, Ctrl-S: Save, Ctrl-N: Save As,\r\n"
+                        "Ctrl-C: Copy, Ctrl-V: Paste, Ctrl-Z: Undo, Ctrl-R: Redo,\r\n"
+                        "Arrows, Page Up/Down, Home, and End to Move, Alt-Arrows to Select\r\n\r\n"
+                        "Press Ctrl-G to Exit Help";
     int length = strlen(helpString);
 
     appendBufAppend(abuf, "\x1b[2J", 4);
@@ -1444,32 +1503,50 @@ void resetSelect(int* in_select) {
     E.sel_starty = E.sel_endy = E.cursory;
 }
 
-void pushArrows(int c) {
+void pushArrows(Stack* stack, int c) {
     switch (c) {
         case ARROW_UP:
-            push(undo, ARROW_DOWN);
+            push(stack, ARROW_DOWN);
         break;
         case ARROW_LEFT:
-            push(undo, ARROW_RIGHT);
+            push(stack, ARROW_RIGHT);
         break;
         case ARROW_DOWN:
-            push(undo, ARROW_UP);
+            push(stack, ARROW_UP);
         break;
         case ARROW_RIGHT:
-            push(undo, ARROW_LEFT);
+            push(stack, ARROW_LEFT);
         break;
         case ALT_UP:
-            push(undo, ALT_DOWN);
+            push(stack, ALT_DOWN);
         break;
         case ALT_LEFT:
-            push(undo, ALT_RIGHT);
+            push(stack, ALT_RIGHT);
         break;
         case ALT_DOWN:
-            push(undo, ALT_UP);
+            push(stack, ALT_UP);
         break;
         case ALT_RIGHT:
-            push(undo, ALT_LEFT);
+            push(stack, ALT_LEFT);
         break;
+    }
+}
+
+void processPageKeys(Stack* stack, int c) {
+    if (c == PAGE_UP) {
+        push(stack, PAGE_DOWN);
+        E.cursory = E.rowoff;
+    } else {
+        push(stack, PAGE_UP);
+        E.cursory = E.rowoff + E.screen_rows - 1;
+        if (E.cursory >= E.num_rows) {
+            E.cursory = E.num_rows;
+        }
+    }
+
+    int times = E.screen_rows;
+    while (times--) {
+        moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
     }
 }
 
@@ -1486,7 +1563,13 @@ void processKeyPress() {
             case '\r':
                 resetSelect(&in_select);
                 push(undo, BACKNEWROW);
-                editorInsertNewLine();
+                if (config.auto_indent) {
+                    int i;
+                    for (i = 0; i < E.row[E.cursory].indent; ++i) {
+                        push(undo, BACKSPACE);
+                    }
+                }
+                editorInsertNewLine(0);
             break;
 
             case CTRL_KEY('Q'):
@@ -1521,7 +1604,6 @@ void processKeyPress() {
             break;
 
             case CTRL_KEY('V'):
-                E.state = STATE_PASTE;
                 resetSelect(&in_select);
                 int i = 0;
                 for (i = 0; i < strlen(E.copied_text); ++i) {
@@ -1535,19 +1617,27 @@ void processKeyPress() {
             break;
 
             case CTRL_KEY('Z'):
-                editorUndo();
+                editorSwapStacks(undo, redo);
             break;
 
             case CTRL_KEY('R'):
-                //editorRedo();
+                editorSwapStacks(redo, undo);
             break;
 
             case HOME:
+                int h;
+                for (h = 0; h < E.cursorx; ++h) {
+                    push(undo, ARROW_RIGHT);
+                }
                 E.cursorx = 0;
             break;
             case END:
                 if (E.cursory < E.num_rows) {
+                    int pos = E.cursorx;
                     E.cursorx = E.row[E.cursory].size;
+                    for (; pos < E.cursorx; ++pos) {
+                        push(undo, ARROW_LEFT);
+                    }
                 }
             break;
 
@@ -1557,10 +1647,7 @@ void processKeyPress() {
                 resetSelect(&in_select);
                 if (c == DELETE) {
                     moveCursor(ARROW_RIGHT);
-                    push(undo, ARROW_LEFT);
-                    E.state = STATE_DELETE;
-                } else if (c == BACKSPACE) {
-                    E.state = STATE_BACK;
+                    push(undo, DELETEINV);
                 }
                 if (E.cursorx > 0) {
                     push(undo, E.row[E.cursory].chars[E.cursorx - 1]);
@@ -1572,19 +1659,9 @@ void processKeyPress() {
 
             case PAGE_UP:
             case PAGE_DOWN: {
-                if (c == PAGE_UP) {
-                    E.cursory = E.rowoff;
-                } else if (c == PAGE_DOWN) {
-                    E.cursory = E.rowoff + E.screen_rows - 1;
-                    if (E.cursory >= E.num_rows) {
-                        E.cursory = E.num_rows;
-                    }
-                }
-
-                int times = E.screen_rows;
-                while (times--) {
-                    moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-                }
+                push(undoPageKeysY, E.cursory);
+                push(undoPageKeysX, E.cursorx);
+                processPageKeys(undo, c);
                 break;
             }
 
@@ -1592,10 +1669,9 @@ void processKeyPress() {
             case ARROW_LEFT:
             case ARROW_DOWN:
             case ARROW_RIGHT:
-                E.state = STATE_MOVE;
                 moveCursor(c);
             resetSelect(&in_select);
-            pushArrows(c);
+            pushArrows(undo, c);
             //setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
@@ -1603,9 +1679,8 @@ void processKeyPress() {
             case ALT_DOWN:
             case ALT_LEFT:
             case ALT_UP:
-                E.state = STATE_MOVE;
                 moveSelect(c, &in_select, &sel_dir);
-            pushArrows(c);
+            pushArrows(undo, c);
            // setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
@@ -1614,11 +1689,13 @@ void processKeyPress() {
                 break;
 
             default:
-                E.state = STATE_KEY;
                 resetSelect(&in_select);
                 editorInsertChar(c);
                 push(undo, BACKSPACE);
             break;
+        }
+        if ((c != CTRL_KEY('G')) && (c != CTRL_KEY('R')) && (c != CTRL_KEY('Z'))) {
+            clear(redo);
         }
     } else {
         if (c == CTRL_KEY('G')) {
@@ -1675,25 +1752,15 @@ void setIndents() {
     }
 }
 
-/*
- * Writable actions to store in undo/redo trees:
- * 1. A line of text written
- * 2. Each movement to the next line written (ie, after writing on line 10, move to line 50 column 15, this is 1 undo) (Maybe not)
- * 3. New lines added
- * 4. All text pasted
- * 5. A line of text deleted
- *
- * How this works
- * We will add every key typed to the undo stack
- * When undoing, we will pop off the top of the stack untill we reach a different type of character
- */
-
 int main(int argc, char *argv[]) {
     //kewetext main code starts, and loops through editor functions
     enableRawMode();
     startEditor();
     loadConfig(&config);
     undo = createStack(config.default_undo, config.inf_undo);
+    redo = createStack(config.default_undo, config.inf_undo);
+    undoPageKeysY = createStack(config.default_undo, config.inf_undo);
+    undoPageKeysX = createStack(config.default_undo, config.inf_undo);
     if (argc > 1) {
         editorOpen(argv[1]);
         setIndents();

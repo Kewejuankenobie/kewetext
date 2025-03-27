@@ -15,6 +15,7 @@ struct Configuration {
     int auto_indent;
     int default_undo;
     int inf_undo;
+    int cursor_save;
 };
 
 void loadConfig(struct Configuration* config);

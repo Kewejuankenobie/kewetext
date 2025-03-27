@@ -12,7 +12,7 @@ void loadConfig(struct Configuration* config) {
     char* line = NULL;
     size_t bufCap = 0;
     while (getline(&line, &bufCap, file) != -1) {
-        if (line[0] == '#') {
+        if (line[0] == '#' || line[0] == '\n') {
             continue;
         }
         char* token = strtok(line, "=");
@@ -27,6 +27,8 @@ void loadConfig(struct Configuration* config) {
             config->default_undo = value;
         } else if (strcmp(token, "INF_UNDO") == 0) {
             config->inf_undo = value;
+        } else if (strcmp(token, "CURSOR_SAVE") == 0) {
+            config->cursor_save = value;
         }
     }
 

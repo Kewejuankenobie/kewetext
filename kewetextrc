@@ -1,11 +1,20 @@
 #Configuration File For Kewetext
+
 #Number of spaces per Tab
 TAB_STOP=4
+
 #Amount of times to press quit for quiting while unsaved
 QUIT_TIMES=2
-#Whether auto indent is on
+
+#Auto indent lines based on the previous line (0 off, 1 on)
 AUTO_INDENT=1
-#Default key presses to be stored in undo
+
+#Default key presses to be stored in undo / cap of finite undos
+#(Every key press counts as an undo, the program will use multiple undos each time Ctrl-Z is pressed)
 DEFAULT_UNDO=200
-#Whether to have infinite undos
-INF_UNDO = 0
+
+#Use infinite or finite undos (0 finite, 1 infinite)
+INF_UNDO=0
+
+#Return to the cursors position before entering find mode on exit (0 off, 1 on)
+CURSOR_SAVE=0

@@ -17,6 +17,7 @@ void destroyStack(Stack* stack);
 int push(Stack* stack, int keyAdded);
 int pop(Stack* stack, int* keyRecived);
 int peek(Stack* stack);
+int clear(Stack* stack);
 
 
 #endif //STACK_H
