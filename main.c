@@ -845,13 +845,11 @@ void editorSaveFile(int newFile) {
 
 //COPY
 
-void editorCopy() {
-    //Copies text to a string
+int getSelectSize() {
     int r;
     int start;
     int end;
-    int copyLen = 0;
-    //First, get the size to allocate
+    int selectLen = 0;
     for (r = E.sel_starty; r < E.sel_endy + 1; ++r) {
         if (r == E.sel_starty) {
             start = E.sel_startx;
@@ -859,15 +857,26 @@ void editorCopy() {
             start = 0;
         }
         if (r == E.sel_endy) {
-            end = E.sel_endx;
+            end = E.sel_endx - 1;
         } else {
             end = E.row[r].size - 1;
         }
-        copyLen += end + 1 - start;
+        selectLen += end + 1 - start;
         if (end == E.row[r].size - 1) {
-            ++copyLen;
+            ++selectLen;
         }
     }
+    return selectLen;
+}
+
+void editorCopy() {
+    //Copies text to a string
+    int r;
+    int start;
+    int end;
+    int copyLen = 0;
+    //First, get the size to allocate
+    copyLen = getSelectSize();
 
     //Next, copy over all required text
     free(E.copied_text);
@@ -880,7 +889,7 @@ void editorCopy() {
             start = 0;
         }
         if (r == E.sel_endy) {
-            end = E.sel_endx;
+            end = E.sel_endx - 1;
         } else {
             //Minus 1 cause \0
             end = E.row[r].size - 1;
@@ -1098,19 +1107,15 @@ int drawSelect(struct appendbuf* abuf, int charx, int chary) {
     if (E.sel_startx == E.sel_endx && E.sel_starty == E.sel_endy) {
         return 0;
     }
-    if (!(E.cursorx == charx && E.cursory == chary) && //Do not invert the cursor as included in selection
-        (((E.sel_starty < chary) && (chary < E.sel_endy)) || //Middle
-        ((E.sel_starty == chary) && (chary == E.sel_endy) && (E.sel_startx <= charx) && (charx <= E.sel_endx)) || //Same start/end row
+    if (((E.sel_starty < chary) && (chary < E.sel_endy)) || //Middle
+        ((E.sel_starty == chary) && (chary == E.sel_endy) && (E.sel_startx <= charx) && (charx < E.sel_endx)) || //Same start/end row
         ((E.sel_starty == chary) && (chary != E.sel_endy) && (E.sel_startx <= charx)) || //Start row
-        ((chary == E.sel_endy) && (E.sel_starty != chary) && (charx <= E.sel_endx)))) {//End row
+        ((chary == E.sel_endy) && (E.sel_starty != chary) && (charx < E.sel_endx))) {//End row
         appendBufAppend(abuf, "\x1b[7m", 4);
         return 1;
     }
-    return 0;
 
-    //With the characters saved, we can then copy and paste
-    //COPY: use realloc for this and memcpy characters from start pos in a row to end (end of row add newline char)
-    //PASTE: Insert the string into the row at cursorx, a newline creates a new row
+    return 0;
 }
 
 void drawRows(struct appendbuf* abuf) {
@@ -1171,7 +1176,6 @@ void drawRows(struct appendbuf* abuf) {
                         appendBufAppend(abuf, "\x1b[39m", 5);
                         currentColor = -1;
                     }
-                    //TODO: is selected
                     int isSelected = drawSelect(abuf, j, fileRow);
                     appendBufAppend(abuf, &c[j], 1);
                     if (isSelected) {
@@ -1186,7 +1190,6 @@ void drawRows(struct appendbuf* abuf) {
                         int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
                         appendBufAppend(abuf, buf, clen);
                     }
-                    //TODO: is selected
                     int isSelected = drawSelect(abuf, j, fileRow);
                     appendBufAppend(abuf, &c[j], 1);
                     if (isSelected) {
@@ -1599,17 +1602,24 @@ void processKeyPress() {
             case BACKSPACE:
             case CTRL_KEY('h'):
             case DELETE:
-                resetSelect(&in_select);
-                if (c == DELETE) {
+                int backAmt = getSelectSize();
+                if (c == DELETE && backAmt == 0) {
                     moveCursor(ARROW_RIGHT);
                     push(undo, DELETEINV);
                 }
-                if (E.cursorx > 0) {
-                    push(undo, E.row[E.cursory].chars[E.cursorx - 1]);
-                } else {
-                    push(undo, '\r');
+                if (backAmt == 0) {
+                    backAmt = 1;
                 }
-                editorDeleteChar();
+                int b;
+                for (b = 0; b < backAmt; ++b) {
+                    if (E.cursorx > 0) {
+                        push(undo, E.row[E.cursory].chars[E.cursorx - 1]);
+                    } else {
+                        push(undo, '\r');
+                    }
+                    editorDeleteChar();
+                }
+                resetSelect(&in_select);
             break;
 
             case PAGE_UP:
