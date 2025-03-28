@@ -18,7 +18,7 @@
 #include "stack.h"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define KEWETEXT_VERSION "0.0.1"
+#define KEWETEXT_VERSION "0.1.0"
 
 struct Configuration config;
 
@@ -434,15 +434,14 @@ void editorSelectSyntaxHighlight() {
     }
 
     char* ext = strrchr(E.filename, '.');
-    unsigned int j;
     struct editorSyntax* s = config.syntax;
     for (; s != NULL; s = s->next) {
-        //struct editorSyntax* s = &config.syntax[j];
+        //For each syntax, we determine if the files extension matches one of the file matches in the syntax struct
         unsigned int i = 0;
         while (s->filematch[i]) {
             int isExt = (s->filematch[i][0] == '.');
-            if ((isExt && ext && !strcmp(ext, s->filematch[i])) ||
-                (!isExt && strstr(E.filename, s->filematch[i]))) {
+            if ((isExt && ext && !strcmp(ext, s->filematch[i]))) {// ||
+                //(!isExt && strstr(E.filename, s->filematch[i]))) {
                 E.syntax = s;
 
                 int filerow;
@@ -459,6 +458,7 @@ void editorSelectSyntaxHighlight() {
 //ROW OPS
 
 void setRowIndent(erow* row) {
+    //Sets the number of indents found at the beginning of the row
     char *c = &row->chars[0];
     int consecSpace = 0;
     row->indent = 0;
@@ -846,6 +846,7 @@ void editorSaveFile(int newFile) {
 //COPY
 
 int getSelectSize() {
+    //Returns the total size of the selected area, including all non-null characters
     int r;
     int start;
     int end;
@@ -940,6 +941,7 @@ void editorSwapStacks(Stack* source, Stack* dest) {
         case BACKSPACE:
         case BACKNEWROW:
         case DELETE:
+        //Flips delete and backspace characters in the dest stack and does these operations
         int charItr;
             while (pop(source, &charItr) == 1) {
                 if (firstChar == DELETE || charItr == DELETE) {
@@ -962,6 +964,7 @@ void editorSwapStacks(Stack* source, Stack* dest) {
         case ARROW_RIGHT:
         case ARROW_UP:
         case ARROW_DOWN:
+        //Flips arrow key operations and does these
         int arrowItr;
             while (pop(source, &arrowItr) == 1) {
                 pushArrows(dest, arrowItr);
@@ -976,6 +979,7 @@ void editorSwapStacks(Stack* source, Stack* dest) {
         case ALT_DOWN:
         case ALT_LEFT:
         case ALT_RIGHT:
+        //Flips alt arrow keys and does these operations
         int arrowItr2;
             while (pop(source, &arrowItr2) == 1) {
                 pushArrows(dest, arrowItr2);
@@ -988,6 +992,8 @@ void editorSwapStacks(Stack* source, Stack* dest) {
 
         case PAGE_UP:
         case PAGE_DOWN:
+        //Flips the page up and down keys, does these operations, and sends/recives x and y positions to keep
+        //track of
             while (pop(source, &firstChar) == 1) {
                 if (dest == undo) {
                     push(undoPageKeysY, E.cursory);
@@ -1005,6 +1011,7 @@ void editorSwapStacks(Stack* source, Stack* dest) {
         break;
 
         case '\r':
+            //Reverses a return character and does this operation
             while (pop(source, &firstChar) == 1) {
                 editorInsertNewLine(1);
                 if (peek(source) == DELETEINV) {
@@ -1027,6 +1034,7 @@ void editorSwapStacks(Stack* source, Stack* dest) {
             break;
 
         default:
+            //Inserts a character and reverses this operation to either a backspace or delete action
             while (pop(source, &firstChar) == 1) {
                 editorInsertChar(firstChar);
                 if (peek(source) == DELETEINV) {
@@ -1044,13 +1052,6 @@ void editorSwapStacks(Stack* source, Stack* dest) {
             break;
     }
 }
-
-//REDO
-
-void editorRedo() {
-
-}
-
 
 //APPEND BUFFER
 struct appendbuf {
@@ -1125,6 +1126,7 @@ void drawRows(struct appendbuf* abuf) {
         int fileRow = E.rowoff + i;
         if (fileRow >= E.num_rows) {
             if (E.num_rows == 0 && i == E.screen_rows / 3) {
+                //Draws welcome text when nothing is in the file
                 char welcome[80];
                 int welcomLength = snprintf(welcome, sizeof(welcome),
                     "Kewetext Editor -- version %s", KEWETEXT_VERSION);
@@ -1142,6 +1144,7 @@ void drawRows(struct appendbuf* abuf) {
 
                 appendBufAppend(abuf, welcome, welcomLength);
             } else {
+                //Empty lines after the end of a file are represented by this
                 appendBufAppend(abuf, "-)", 2);
             }
         } else {
@@ -1211,9 +1214,8 @@ void drawStatusBar(struct appendbuf* abuf) {
     //Draws the status bar
     appendBufAppend(abuf, "\x1b[7m", 4);
     char status[80], rightstatus[80];
-    int length = snprintf(status, sizeof(status)," %.20s - %d lines %s",
-        E.filename ? E.filename : "[No Name]", E.num_rows,
-        E.dirty? "(Modified)" : "");
+    int length = snprintf(status, sizeof(status)," %.20s - Kewetext %s",
+        E.filename ? E.filename : "[No Name]", E.dirty? "(Modified)" : "");
     int rightlength = snprintf(rightstatus, sizeof(rightstatus), "%s | Line: %d/%d ",
         E.syntax ? E.syntax->filetype : "no ft", E.cursory + 1, E.num_rows);
     if (length > E.screen_cols) {
@@ -1247,7 +1249,7 @@ void drawMessage(struct appendbuf* abuf) {
 }
 
 void drawHelp(struct appendbuf* abuf) {
-
+    //Draws the help window
     char helpString[] = "\x1b[1m""Help Page\x1b[22m""\r\n\r\n"
                         "Ctrl-G: Help, Ctrl-Q: Quit, Ctrl-S: Save, Ctrl-N: Save As,\r\n"
                         "Ctrl-C: Copy, Ctrl-V: Paste, Ctrl-Z: Undo, Ctrl-R: Redo,\r\n"
@@ -1461,6 +1463,7 @@ void resetSelect(int* in_select) {
 }
 
 void pushArrows(Stack* stack, int key) {
+    //Adds the inverse of arrows and alt arrows to a stack
     switch (key) {
         case ARROW_UP:
             push(stack, ARROW_DOWN);
@@ -1490,6 +1493,7 @@ void pushArrows(Stack* stack, int key) {
 }
 
 void processPageKeys(Stack* stack, int c) {
+    //Process the page up and page down keys
     if (c == PAGE_UP) {
         push(stack, PAGE_DOWN);
         E.cursory = E.rowoff;
@@ -1637,7 +1641,6 @@ void processKeyPress() {
                 moveCursor(c);
             resetSelect(&in_select);
             pushArrows(undo, c);
-            //setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
             case ALT_RIGHT:
@@ -1646,7 +1649,6 @@ void processKeyPress() {
             case ALT_UP:
                 moveSelect(c, &in_select, &sel_dir);
             pushArrows(undo, c);
-           // setStatusMessage("start: %d,%d end: %d,%d", E.sel_starty, E.sel_startx, E.sel_endy, E.sel_endx);
             break;
 
             case CTRL_KEY('l'):

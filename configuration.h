@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+//Editor syntax structure to store a syntax used for highlighting text in files supporting this syntax
+
 struct editorSyntax {
     char* filetype;
     char** filematch;
@@ -24,6 +26,8 @@ struct editorSyntax {
     int keywordSize;
     struct editorSyntax* next;
 };
+
+//Configuration structure to store settings from kewetextrc
 
 struct Configuration {
     int tab_stop;

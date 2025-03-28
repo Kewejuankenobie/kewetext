@@ -10,6 +10,7 @@ void loadFileType(struct editorSyntax* syntax, char* line) {
         char* type = strtok(NULL, "=");
         syntax->filetype = malloc(strlen(type) + 1);
         strcpy(syntax->filetype, type);
+
     } else if (!strcmp(token, "EXTENSIONS")) {
         char* extension;
         int exC = 0;
@@ -26,6 +27,7 @@ void loadFileType(struct editorSyntax* syntax, char* line) {
             }
         }
         syntax->filematchSize = size;
+
     } else if (!strcmp(token, "KEYWORDS")) {
         char* keyword;
         int exC = 0;
@@ -42,23 +44,28 @@ void loadFileType(struct editorSyntax* syntax, char* line) {
             }
         }
         syntax->keywordSize = size;
+
     } else if (!strcmp(token, "SLC")) {
         char* scl = strtok(NULL, "=");
         syntax->singleLineCommentStart = malloc(strlen(scl) + 1);
         strcpy(syntax->singleLineCommentStart, scl);
+
     } else if (!strcmp(token, "MLC_START")) {
         char* mlcStart = strtok(NULL, "=");
         syntax->multiLineCommentStart = malloc(strlen(mlcStart) + 1);
         strcpy(syntax->multiLineCommentStart, mlcStart);
+
     } else if (!strcmp(token, "MLC_END")) {
         char* mlcEnd = strtok(NULL, "=");
         syntax->multiLineCommentEnd = malloc(strlen(mlcEnd) + 1);
         strcpy(syntax->multiLineCommentEnd, mlcEnd);
+
     } else if (!strcmp(token, "HIGHLIGHT_NUM")) {
         int value = atoi(strtok(NULL, "="));
         if (value) {
             syntax->flags = syntax->flags | HL_HIGHLIGHT_NUMBERS;
         }
+
     } else if (!strcmp(token, "HIGHLIGHT_STR")) {
         int value = atoi(strtok(NULL, "="));
         if (value) {
@@ -69,6 +76,7 @@ void loadFileType(struct editorSyntax* syntax, char* line) {
 }
 
 void freeSyntax(struct editorSyntax* syntax) {
+    //Deallocates heap memory used by syntax variables
     free(syntax->filetype);
     int i;
     for (i = 0; i < syntax->filematchSize; i++) {
@@ -85,6 +93,7 @@ void freeSyntax(struct editorSyntax* syntax) {
 }
 
 void loadConfig(struct Configuration* config) {
+    //Loads the configuration file and stores all settings in the configuration struct
     FILE* file = fopen("../kewetextrc", "r");
     if (!file) {
         printf("Failed to open file config file or does not exist\n");
@@ -99,16 +108,19 @@ void loadConfig(struct Configuration* config) {
     config->highlight_entries = 0;
     while (getline(&line, &bufCap, file) != -1) {
         if (line[0] == '#' || line[0] == '\n') {
+            //Skip comments
             continue;
         }
         char* token = strtok(line, "\n");
         if (!strcmp(token, "[FStart]")) {
+            //Begin the process of allocating syntax
             isLoadingFileType = 1;
             syntax = malloc(sizeof(struct editorSyntax));
             syntax->flags = 0;
             continue;
         }
         if (!strcmp(token, "[FEnd]")) {
+            //End allocating syntax and add to the end of the syntax linked list
             isLoadingFileType = 0;
             syntax->next = NULL;
             if (!config->syntax) {
@@ -127,6 +139,7 @@ void loadConfig(struct Configuration* config) {
         if (isLoadingFileType) {
             loadFileType(syntax, line);
         } else {
+            //When not editing the syntax, we are editing the main settings
             token = strtok(line, "=");
             int value = atoi(strtok(NULL, "="));
             if (strcmp(token, "TAB_STOP") == 0) {
@@ -149,6 +162,7 @@ void loadConfig(struct Configuration* config) {
 }
 
 void destroyConfig(struct Configuration* config) {
+    //Deallocates the configuration, in this case being just the syntax
     if (!config->syntax) {
         return;
     }
