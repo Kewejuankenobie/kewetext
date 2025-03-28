@@ -56,15 +56,6 @@ enum editorHighlight {
 #define HL_HIGHLIGHT_STRINGS (1<<1)
 
 //DATA
-struct editorSyntax {
-    char* filetype;
-    char** filematch;
-    char** keywords;
-    char* singleLineCommentStart;
-    char* multiLineCommentStart;
-    char* multiLineCommentEnd;
-    int flags;
-};
 
 
 //Structure of a row of text
@@ -113,44 +104,6 @@ Stack* undo;
 Stack* redo;
 Stack* undoPageKeysY;
 Stack* undoPageKeysX;
-
-//FILETYPES
-char* C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
-char* C_HL_keywords[] = {
-    "switch", "if", "else", "for", "while", "break", "continue", "return",
-    "struct", "union", "typedef", "static", "enum", "class", "case",
-    "public", "protected", "private", "do",
-    "template", "typename", "try", "catch",
-
-    "int|", "long|", "short|", "float|", "double|", "char|",
-    "unsigned|", "signed|", "void|", NULL
-};
-
-char* PY_HL_extensions[] = {".py", NULL};
-char* PY_HL_keywords[] = {
-    "if", "else", "elif", "for", "while", "in", "break", "continue", "return",
-    "class", "match", "case",
-
-    "int|", "str|", "float|", "tuple|", "list|", "dict|", "self|", "def|", NULL};
-
-struct editorSyntax HLDB[] = {
-    {
-        "c",
-        C_HL_extensions,
-        C_HL_keywords,
-        "//", "/*", "*/",
-        HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
-    },
-    {
-        "py",
-        PY_HL_extensions,
-        PY_HL_keywords,
-        "#", "'''", "'''",
-        HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
-    },
-};
-
-#define HLDB_ENTRIES (sizeof(HLDB) / sizeof(HLDB[0]))
 
 //PROTOTYPES
 void setStatusMessage(const char* message, ...);
@@ -482,8 +435,9 @@ void editorSelectSyntaxHighlight() {
 
     char* ext = strrchr(E.filename, '.');
     unsigned int j;
-    for (j = 0; j < HLDB_ENTRIES; ++j) {
-        struct editorSyntax* s = &HLDB[j];
+    struct editorSyntax* s = config.syntax;
+    for (; s != NULL; s = s->next) {
+        //struct editorSyntax* s = &config.syntax[j];
         unsigned int i = 0;
         while (s->filematch[i]) {
             int isExt = (s->filematch[i][0] == '.');
@@ -1503,8 +1457,8 @@ void resetSelect(int* in_select) {
     E.sel_starty = E.sel_endy = E.cursory;
 }
 
-void pushArrows(Stack* stack, int c) {
-    switch (c) {
+void pushArrows(Stack* stack, int key) {
+    switch (key) {
         case ARROW_UP:
             push(stack, ARROW_DOWN);
         break;
@@ -1582,6 +1536,7 @@ void processKeyPress() {
                     }
 
             destroyStack(undo);
+            destroyConfig(&config);
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
@@ -1754,9 +1709,11 @@ void setIndents() {
 
 int main(int argc, char *argv[]) {
     //kewetext main code starts, and loops through editor functions
+
     enableRawMode();
     startEditor();
     loadConfig(&config);
+    struct editorSyntax* s = config.syntax;
     undo = createStack(config.default_undo, config.inf_undo);
     redo = createStack(config.default_undo, config.inf_undo);
     undoPageKeysY = createStack(config.default_undo, config.inf_undo);

@@ -1,5 +1,7 @@
 #Configuration File For Kewetext
 
+##Main Settings##
+
 #Number of spaces per Tab
 TAB_STOP=4
 
@@ -18,3 +20,31 @@ INF_UNDO=0
 
 #Return to the cursors position before entering find mode on exit (0 off, 1 on)
 CURSOR_SAVE=0
+
+##Filetypes##
+
+#Add as much filetype syntax as you would like here
+
+#C, C++
+[FStart]
+TYPE=c
+EXTENSIONS=c,h,cpp,hpp
+KEYWORDS=switch,if,else,for,while,break,continue,return,struct,union,typedef,static,enum,class,public,protected,private,do,template,typename,try,catch,int|,long|,short|,float|,double|,char|,unsigned|,signed|,void|
+SLC=//
+MLC_START=/*
+MLC_END=*/
+HIGHLIGHT_NUM=1
+HIGHLIGHT_STR=1
+[FEnd]
+
+#Python
+[FStart]
+TYPE=py
+EXTENSIONS=py
+KEYWORDS=if,else,elif,for,while,in,break,continue,return,clss,match,case,try,except,int|,str|,float|,tuple|,list|,dict|,self|,def|
+SLC=#
+MLC_START='''
+MLC_END='''
+HIGHLIGHT_NUM=1
+HIGHLIGHT_STR=1
+[FEnd]
