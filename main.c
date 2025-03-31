@@ -1515,7 +1515,6 @@ void processKeyPress() {
     static int quit_times = 0;
     static int in_select = 0;
     static int sel_dir = 0;
-    static int undo_state = 0;
     int c = editorReadKey();
 
     if (!E.help) {
@@ -1566,7 +1565,7 @@ void processKeyPress() {
 
             case CTRL_KEY('V'):
                 resetSelect(&in_select);
-                int i = 0;
+                size_t i = 0;
                 for (i = 0; i < strlen(E.copied_text); ++i) {
                     push(undo, BACKSPACE);
                 }
@@ -1724,7 +1723,6 @@ int main(int argc, char *argv[]) {
     enableRawMode();
     startEditor();
     loadConfig(&config);
-    struct editorSyntax* s = config.syntax;
     undo = createStack(config.default_undo, config.inf_undo);
     redo = createStack(config.default_undo, config.inf_undo);
     undoPageKeysY = createStack(config.default_undo, config.inf_undo);

@@ -133,7 +133,7 @@ void setColorHighlights(struct Configuration* config, char* token, int value) {
 
 void loadConfig(struct Configuration* config) {
     //Loads the configuration file and stores all settings in the configuration struct
-    FILE* file = fopen("../kewetextrc", "r");
+    FILE* file = fopen("kewetextrc", "r");
     if (!file) {
         printf("Failed to open file config file or does not exist\n");
         exit(EXIT_FAILURE);
