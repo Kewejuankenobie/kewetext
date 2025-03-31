@@ -281,7 +281,7 @@ int getWindowSize(int* rows, int* cols) {
 
 int isSeperator(int c) {
     //Determines if a character is a non-highlightable character
-    return isspace(c) || c == '\0' || strchr(",.()+-/*-~%<>[];:", c) != NULL;
+    return isspace(c) || c == '\0' || strchr(",.()+-/*=-~%<>[];:", c) != NULL;
 }
 
 void editorUpdateSyntax(erow* row) {
@@ -415,14 +415,14 @@ void editorUpdateSyntax(erow* row) {
 int syntaxToColor(int hl) {
     //Returns the syntax color for terminal escape sequences
     switch (hl) {
-        case HL_NUMBER: return 31;
-        case HL_KEYWORD1: return 35;
-        case HL_KEYWORD2: return 32;
-        case HL_STRING: return 33;
-        case HL_COMMENT:
-        case HL_MULTILINE_COMMENT: return 36;
-        case HL_MATCH: return 34;
-        default: return 37;
+        case HL_NUMBER: return config.hl_number;
+        case HL_KEYWORD1: return config.hl_keyword1;
+        case HL_KEYWORD2: return config.hl_keyword2;
+        case HL_STRING: return config.hl_string;
+        case HL_COMMENT: return config.hl_comment;
+        case HL_MULTILINE_COMMENT: return config.hl_multiline_comment;
+        case HL_MATCH: return config.hl_match;
+        default: return config.hl_default;
     }
 }
 
@@ -440,8 +440,8 @@ void editorSelectSyntaxHighlight() {
         unsigned int i = 0;
         while (s->filematch[i]) {
             int isExt = (s->filematch[i][0] == '.');
-            if ((isExt && ext && !strcmp(ext, s->filematch[i]))) {// ||
-                //(!isExt && strstr(E.filename, s->filematch[i]))) {
+            if ((isExt && ext && !strcmp(ext, s->filematch[i])) ||
+                (!isExt && strstr(E.filename, s->filematch[i]))) {
                 E.syntax = s;
 
                 int filerow;
@@ -1190,7 +1190,12 @@ void drawRows(struct appendbuf* abuf) {
                     if (color != currentColor) {
                         currentColor = color;
                         char buf[16];
-                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        int clen;
+                        if (config.use_256_colors) {
+                            clen = snprintf(buf, sizeof(buf), "\x1b[38;5;%dm", color);
+                        } else {
+                            clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        }
                         appendBufAppend(abuf, buf, clen);
                     }
                     int isSelected = drawSelect(abuf, j, fileRow);
@@ -1198,7 +1203,12 @@ void drawRows(struct appendbuf* abuf) {
                     if (isSelected) {
                         appendBufAppend(abuf, "\x1b[m", 3);
                         char buf[16];
-                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        int clen;
+                        if (config.use_256_colors) {
+                            clen = snprintf(buf, sizeof(buf), "\x1b[38;5;%dm", color);
+                        } else {
+                            clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        }
                         appendBufAppend(abuf, buf, clen);
                     }
                 }

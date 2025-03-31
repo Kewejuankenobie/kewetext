@@ -21,14 +21,34 @@ INF_UNDO=0
 #Return to the cursors position before entering find mode on exit (0 off, 1 on)
 CURSOR_SAVE=0
 
+##Colors##
+
+#Sets the color mode of syntax highlighting to use 256 colors (0 use 16 colors, 1 use 256 colors)
+USE_256_COLORS=0
+
+#Set the colors of all syntax highlighting
+#For 16 colors, specify which of the 16 colors you would like (30,...,37) or (90,...,97)
+#For 256 colors, specify which of the 256 colors you would like (0,...,255)
+HL_NUMBER=31
+HL_KEYWORD1=35
+HL_KEYWORD2=32
+HL_STRING=33
+HL_COMMENT=36
+HL_MULTILINE_COMMENT=36
+HL_FIND=34
+HL_DEFAULT=37
+
 ##Filetypes##
 
-#Add as much filetype syntax as you would like here
+#Add as many filetype syntax as you would like here
+#In EXTENSIONS, a dot before the string signifies a file extension, while no dot signifies a pattern to look for
+#in the file name
+#Add a pipe to the end of a keyword to use the keyword2 color
 
 #C, C++
 [FStart]
 TYPE=c
-EXTENSIONS=c,h,cpp,hpp
+EXTENSIONS=.c,.h,.cpp,.hpp
 KEYWORDS=switch,if,else,for,while,break,continue,return,struct,union,typedef,static,enum,class,public,protected,private,do,template,typename,try,catch,int|,long|,short|,float|,double|,char|,unsigned|,signed|,void|
 SLC=//
 MLC_START=/*
@@ -40,11 +60,23 @@ HIGHLIGHT_STR=1
 #Python
 [FStart]
 TYPE=py
-EXTENSIONS=py
+EXTENSIONS=.py
 KEYWORDS=if,else,elif,for,while,in,break,continue,return,clss,match,case,try,except,int|,str|,float|,tuple|,list|,dict|,self|,def|
 SLC=#
 MLC_START='''
 MLC_END='''
 HIGHLIGHT_NUM=1
 HIGHLIGHT_STR=1
+[FEnd]
+
+#RC
+[FStart]
+TYPE=rc
+EXTENSIONS=rc
+KEYWORDS=
+SLC=#
+MLC_START=
+MLC_END=
+HIGHLIGHT_NUM=1
+HIGHLIGHT_STR=0
 [FEnd]

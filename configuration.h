@@ -36,11 +36,21 @@ struct Configuration {
     int default_undo;
     int inf_undo;
     int cursor_save;
+    int use_256_colors;
+    int hl_number;
+    int hl_keyword1;
+    int hl_keyword2;
+    int hl_string;
+    int hl_comment;
+    int hl_multiline_comment;
+    int hl_match;
+    int hl_default;
     struct editorSyntax* syntax;
     int highlight_entries;
 };
 
 void loadFileType(struct editorSyntax* syntax, char* line);
+void setColorHighlights(struct Configuration* config, char* token, int value);
 void loadConfig(struct Configuration* config);
 void destroyConfig(struct Configuration* config);
 
