@@ -1,21 +1,30 @@
 CC = gcc
 CFLAGS = -Wall -Wextra
+VPATH = build
 
-all: kewetext
+all: build/bin/kewetext
 
-kewetext: stack.o configuration.o main.o
-	$(CC) stack.o configuration.o main.o -o kewetext
+
+build/bin/kewetext: main.o stack.o configuration.o
+	mkdir build/bin
+	$(CC) $? -o $@
 	@echo "Made"
 
-main.o: main.c stack.h configuration.h
-	$(CC) -c main.c $(CFLAGS)
+build/main.o: main.c stack.h configuration.h
+	mkdir build
+	$(CC) -c main.c $(CFLAGS) -o $@
 
-configuration.o: configuration.c configuration.h
-	$(CC) -c configuration.c $(CFLAGS)
+build/configuration.o: configuration.c configuration.h
+	$(CC) -c configuration.c $(CFLAGS) -o $@
 
-stack.o: stack.c stack.h
-	$(CC) -c stack.c $(CFLAGS)
+build/stack.o: stack.c stack.h
+	$(CC) -c stack.c $(CFLAGS) -o $@
 
 clean:
-	rm kewetext
-	rm *.o
+	rm -rvf build
+.PHONY: clean
+
+install:
+	cp build/bin/kewetext /usr/bin/kewetext
+	cp kewetextrc ~/.config/kewetextrc
+.PHONY: install

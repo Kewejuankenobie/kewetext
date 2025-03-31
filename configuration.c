@@ -133,11 +133,25 @@ void setColorHighlights(struct Configuration* config, char* token, int value) {
 
 void loadConfig(struct Configuration* config) {
     //Loads the configuration file and stores all settings in the configuration struct
-    FILE* file = fopen("kewetextrc", "r");
-    if (!file) {
-        printf("Failed to open file config file or does not exist\n");
-        exit(EXIT_FAILURE);
+    const char* homedir;
+    if (!(homedir = getenv("HOME"))) {
+        homedir = getpwuid(getuid())->pw_dir;
     }
+    const char* configPath = "/.config/kewetextrc";
+    char* homeConfigPath = malloc(strlen(homedir) + strlen(configPath) + 1);
+    strcpy(homeConfigPath, homedir);
+    strcat(homeConfigPath, configPath);
+    FILE* file;
+    file = fopen(homeConfigPath, "r");
+    if (!file) {
+        file = fopen("../../kewetextrc", "r");
+        if (!file) {
+            printf("Failed to open file config file or does not exist\n");
+            free(homeConfigPath);
+            exit(EXIT_FAILURE);
+        }
+    }
+    free(homeConfigPath);
     char* line = NULL;
     size_t bufCap = 0;
     int isLoadingFileType = 0;

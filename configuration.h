@@ -5,6 +5,10 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
+#include <unistd.h>
+#include <sys/types.h>
+#include <pwd.h>
+
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
 #define HL_HIGHLIGHT_STRINGS (1<<1)
 
