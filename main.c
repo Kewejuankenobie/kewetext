@@ -1173,17 +1173,6 @@ void drawRows(struct appendbuf* abuf) {
                         int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", currentColor);
                         appendBufAppend(abuf, buf, clen);
                     }
-                } else if (hl[j] == HL_NORMAL) {
-                    //Adds normal text
-                    if (currentColor != -1) {
-                        appendBufAppend(abuf, "\x1b[39m", 5);
-                        currentColor = -1;
-                    }
-                    int isSelected = drawSelect(abuf, j, fileRow);
-                    appendBufAppend(abuf, &c[j], 1);
-                    if (isSelected) {
-                        appendBufAppend(abuf, "\x1b[m", 3);
-                    }
                 } else {
                     //Adds colored text based on the highlight array
                     int color = syntaxToColor(hl[j]);

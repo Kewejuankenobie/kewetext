@@ -24,7 +24,7 @@ CURSOR_SAVE=0
 ##Colors##
 
 #Sets the color mode of syntax highlighting to use 256 colors (0 use 16 colors, 1 use 256 colors)
-USE_256_COLORS=0
+USE_256_COLORS=1
 
 #Set the colors of all syntax highlighting
 #For 16 colors, specify which of the 16 colors you would like (30,...,37) or (90,...,97)
