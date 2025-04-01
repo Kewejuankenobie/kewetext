@@ -8,7 +8,7 @@ all: build/bin/kewetext
 build/bin/kewetext: main.o stack.o configuration.o
 	mkdir build/bin
 	$(CC) $? -o $@
-	@echo "Made"
+	@echo "Finished Making Kewetext"
 
 build/main.o: main.c stack.h configuration.h
 	mkdir build
@@ -28,3 +28,7 @@ install:
 	cp build/bin/kewetext /usr/bin/kewetext
 	cp kewetextrc ~/.config/kewetextrc
 .PHONY: install
+
+uninstall:
+	rm /usr/bin/kewetext
+.PHONY: uninstall

@@ -18,7 +18,7 @@ DEFAULT_UNDO=200
 #Use infinite or finite undos (0 finite, 1 infinite)
 INF_UNDO=0
 
-#Return to the cursors position before entering find mode on exit (0 off, 1 on)
+#Return to the cursors position before entering find mode on its exit (0 off, 1 on)
 CURSOR_SAVE=0
 
 ##Colors##
@@ -41,7 +41,7 @@ HL_DEFAULT=37
 
 ##Filetypes##
 
-#Add as many filetype syntax as you would like here
+#Add as much filetype syntax as you would like here, 3 examples are provided
 #In EXTENSIONS, a dot before the string signifies a file extension, while no dot signifies a pattern to look for
 #in the file name
 #Add a pipe to the end of a keyword to use the keyword2 color

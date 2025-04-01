@@ -52,7 +52,7 @@
 #include "stack.h"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define KEWETEXT_VERSION "0.1.0"
+#define KEWETEXT_VERSION "1.0.0"
 
 struct Configuration config;
 

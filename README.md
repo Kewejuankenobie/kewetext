@@ -22,7 +22,10 @@ kewetextrc file.
 
 ## Installation
 
-This text editor is supported on any Linux distribution.
+This text editor is supported on any Linux distribution; the Makefile
+specifically should work on Linux systems with the standard file hierarchy
+and the user installing being a sudo-er 
+(See [Linux File Hierarchy](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html)).
 
 First, you need to have these build tools installed:
 ```text
@@ -36,12 +39,12 @@ most recent release or by cloning the repository:
 ```shell
 git clone https://github.com/Kewejuankenobie/kewetext.git
 ```
-Next, navigate to this directory and run these commands:
+Next, navigate to this directory and run these commands to build and install to the 
+`/usr/bin` directory:
 
 ```shell
-./configure
 make
-make install
+sudo make install
 ```
 
 This should allow the editor to be run on the current users account.
