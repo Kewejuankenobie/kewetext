@@ -44,7 +44,7 @@ Next, navigate to this directory and run these commands to build and install to 
 
 ```shell
 make
-sudo make install
+make install
 ```
 
 This should allow the editor to be run on the current users account.

@@ -25,10 +25,10 @@ clean:
 .PHONY: clean
 
 install:
-	cp build/bin/kewetext /usr/bin/kewetext
-	cp kewetextrc ~/.config/kewetextrc
+	sudo cp build/bin/kewetext /usr/bin/kewetext
+	cp kewetextrc $(HOME)/.config/kewetextrc
 .PHONY: install
 
 uninstall:
-	rm /usr/bin/kewetext
+	sudo rm /usr/bin/kewetext
 .PHONY: uninstall
