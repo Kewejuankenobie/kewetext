@@ -5,7 +5,7 @@ VPATH = build
 all: build/bin/kewetext
 
 
-build/bin/kewetext: main.o stack.o configuration.o
+build/bin/kewetext: build/main.o build/stack.o build/configuration.o
 	if [ ! -d "build/bin" ]; then mkdir -p build/bin; fi
 	$(CC) $? -o $@
 	@echo "Finished Making Kewetext"
@@ -25,7 +25,8 @@ clean:
 .PHONY: clean
 
 install:
-	sudo cp build/bin/kewetext /usr/bin/kewetext
+	if [ ! -d "/usr/local/bin" ]; then sudo mkdir -p /usr/local/bin; fi
+	sudo cp build/bin/kewetext /usr/local/bin/kewetext
 	if [ ! -d "$(HOME)/.config" ]; then \
   		mkdir $(HOME)/.config; \
   	fi
@@ -33,5 +34,5 @@ install:
 .PHONY: install
 
 uninstall:
-	sudo rm /usr/bin/kewetext
+	sudo rm /usr/local/bin/kewetext
 .PHONY: uninstall
