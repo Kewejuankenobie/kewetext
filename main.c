@@ -52,7 +52,7 @@
 #include "stack.h"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define KEWETEXT_VERSION "1.0.0"
+#define KEWETEXT_VERSION "1.0.2"
 
 struct Configuration config;
 
@@ -86,8 +86,6 @@ enum editorHighlight {
     HL_MATCH
 };
 
-#define HL_HIGHLIGHT_NUMBERS (1<<0)
-#define HL_HIGHLIGHT_STRINGS (1<<1)
 
 //DATA
 
@@ -974,9 +972,9 @@ void editorSwapStacks(Stack* source, Stack* dest) {
     switch (firstChar) {
         case BACKSPACE:
         case BACKNEWROW:
-        case DELETE:
-        //Flips delete and backspace characters in the dest stack and does these operations
-        int charItr;
+        case DELETE: {
+            //Flips delete and backspace characters in the dest stack and does these operations
+            int charItr;
             while (pop(source, &charItr) == 1) {
                 if (firstChar == DELETE || charItr == DELETE) {
                     moveCursor(ARROW_RIGHT);
@@ -993,13 +991,14 @@ void editorSwapStacks(Stack* source, Stack* dest) {
                 }
             }
             break;
+        }
 
         case ARROW_LEFT:
         case ARROW_RIGHT:
         case ARROW_UP:
-        case ARROW_DOWN:
-        //Flips arrow key operations and does these
-        int arrowItr;
+        case ARROW_DOWN: {
+            //Flips arrow key operations and does these
+            int arrowItr;
             while (pop(source, &arrowItr) == 1) {
                 pushArrows(dest, arrowItr);
                 moveCursor(arrowItr);
@@ -1008,13 +1007,14 @@ void editorSwapStacks(Stack* source, Stack* dest) {
                 }
             }
             break;
+        }
 
         case ALT_UP:
         case ALT_DOWN:
         case ALT_LEFT:
-        case ALT_RIGHT:
-        //Flips alt arrow keys and does these operations
-        int arrowItr2;
+        case ALT_RIGHT: {
+            //Flips alt arrow keys and does these operations
+            int arrowItr2;
             while (pop(source, &arrowItr2) == 1) {
                 pushArrows(dest, arrowItr2);
                 moveCursor(arrowItr2);
@@ -1023,6 +1023,7 @@ void editorSwapStacks(Stack* source, Stack* dest) {
                 }
             }
             break;
+        }
 
         case PAGE_UP:
         case PAGE_DOWN:
@@ -1153,13 +1154,37 @@ int drawSelect(struct appendbuf* abuf, int charx, int chary) {
     return 0;
 }
 
+void drawColor(struct appendbuf* abuf, int color) {
+    //Sets the text color
+    char buf[16];
+    int clen;
+    if (config.use_256_colors) {
+        clen = snprintf(buf, sizeof(buf), "\x1b[38;5;%dm", color);
+    } else {
+        clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+    }
+    appendBufAppend(abuf, buf, clen);
+}
+
+void drawPadding(struct appendbuf* abuf, int length) {
+    //Draws padding on empty lines to center a string of length length (from above)
+    int padding = (E.screen_cols - length) / 2;
+    if (padding) {
+        appendBufAppend(abuf, "-)", 2);
+        padding -= 2;
+    }
+    while (padding--) {
+        appendBufAppend(abuf, " ", 1);
+    }
+}
+
 void drawRows(struct appendbuf* abuf) {
     //Draws all rows in the editor
     int i;
     for (i = 0; i < E.screen_rows; ++i) {
         int fileRow = E.rowoff + i;
         if (fileRow >= E.num_rows) {
-            if (E.num_rows == 0 && i == E.screen_rows / 3) {
+            if (E.num_rows == 0 && i == E.screen_rows / 4) {
                 //Draws welcome text when nothing is in the file
                 char welcome[80];
                 int welcomLength = snprintf(welcome, sizeof(welcome),
@@ -1167,14 +1192,7 @@ void drawRows(struct appendbuf* abuf) {
                 if (welcomLength > E.screen_cols) {
                     welcomLength = E.screen_cols;
                 }
-                int padding = (E.screen_cols - welcomLength) / 2;
-                if (padding) {
-                    appendBufAppend(abuf, "-)", 2);
-                    padding -= 2;
-                }
-                while (padding--) {
-                    appendBufAppend(abuf, " ", 1);
-                }
+                drawPadding(abuf, welcomLength);
 
                 appendBufAppend(abuf, welcome, welcomLength);
             } else {
@@ -1212,27 +1230,13 @@ void drawRows(struct appendbuf* abuf) {
                     int color = syntaxToColor(hl[j]);
                     if (color != currentColor) {
                         currentColor = color;
-                        char buf[16];
-                        int clen;
-                        if (config.use_256_colors) {
-                            clen = snprintf(buf, sizeof(buf), "\x1b[38;5;%dm", color);
-                        } else {
-                            clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
-                        }
-                        appendBufAppend(abuf, buf, clen);
+                        drawColor(abuf, color);
                     }
                     int isSelected = drawSelect(abuf, j, fileRow);
                     appendBufAppend(abuf, &c[j], 1);
                     if (isSelected) {
                         appendBufAppend(abuf, "\x1b[m", 3);
-                        char buf[16];
-                        int clen;
-                        if (config.use_256_colors) {
-                            clen = snprintf(buf, sizeof(buf), "\x1b[38;5;%dm", color);
-                        } else {
-                            clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
-                        }
-                        appendBufAppend(abuf, buf, clen);
+                        drawColor(abuf, color);
                     }
                 }
             }
@@ -1637,7 +1641,7 @@ void processKeyPress() {
 
             case BACKSPACE:
             case CTRL_KEY('h'):
-            case DELETE:
+            case DELETE: {
                 int backAmt = getSelectSize();
                 if (c == DELETE && backAmt == 0) {
                     moveCursor(ARROW_RIGHT);
@@ -1656,6 +1660,7 @@ void processKeyPress() {
                     editorDeleteChar();
                 }
                 resetSelect(&in_select);
+            }
             break;
 
             case PAGE_UP:

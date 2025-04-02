@@ -6,12 +6,12 @@ all: build/bin/kewetext
 
 
 build/bin/kewetext: main.o stack.o configuration.o
-	mkdir build/bin
+	if [ ! -d "build/bin" ]; then mkdir build/bin; fi
 	$(CC) $? -o $@
 	@echo "Finished Making Kewetext"
 
 build/main.o: main.c stack.h configuration.h
-	mkdir build
+	if [ ! -d "build" ]; then mkdir build; fi
 	$(CC) -c main.c $(CFLAGS) -o $@
 
 build/configuration.o: configuration.c configuration.h
@@ -26,6 +26,9 @@ clean:
 
 install:
 	sudo cp build/bin/kewetext /usr/bin/kewetext
+	if [ ! -d "$(HOME)/.config" ]; then \
+  		mkdir $(HOME)/.config; \
+  	fi
 	cp kewetextrc $(HOME)/.config/kewetextrc
 .PHONY: install
 
