@@ -22,16 +22,20 @@ kewetextrc file.
 
 ## Installation
 
-This text editor is supported on any Linux distribution; the Makefile
-specifically should work on Linux systems with the standard file hierarchy
+This text editor is supported on any Linux distribution and macOS; the Makefile
+specifically should work on systems with the standard file hierarchy
 and the user installing being a sudo-er 
 (See [Linux File Hierarchy](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html)).
 
-First, you need to have these build tools installed:
+First, you need to have these build tools installed on all platforms:
 ```text
 gcc
 make
 ```
+
+On macOS, it is recommended to have a terminal emulator like iTerm2 so
+the option key can behave like the alt key. In the default terminal,
+the option key does nothing in Kewetext by default.
 
 You will need to get the source code, either through the
 most recent release or by cloning the repository:
