@@ -1622,13 +1622,14 @@ void processKeyPress() {
                 editorSwapStacks(redo, undo);
             break;
 
-            case HOME:
+            case HOME: {
                 int h;
                 for (h = 0; h < E.cursorx; ++h) {
                     push(undo, ARROW_RIGHT);
                 }
                 E.cursorx = 0;
-            break;
+                break;
+            }
             case END:
                 if (E.cursory < E.num_rows) {
                     int pos = E.cursorx;
