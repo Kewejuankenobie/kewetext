@@ -155,7 +155,6 @@ void loadConfig(struct Configuration* config) {
     char* line = NULL;
     size_t bufCap = 0;
     int isLoadingFileType = 0;
-    int count = 1;
     struct editorSyntax* syntax;
     config->syntax = NULL;
     config->highlight_entries = 0;
@@ -185,7 +184,6 @@ void loadConfig(struct Configuration* config) {
                 };
                 itr->next = syntax;
             }
-            ++count;
             config->highlight_entries++;
             continue;
         }

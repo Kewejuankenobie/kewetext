@@ -6,7 +6,7 @@ all: build/bin/kewetext
 
 
 build/bin/kewetext: main.o stack.o configuration.o
-	if [ ! -d "build/bin" ]; then mkdir build/bin; fi
+	if [ ! -d "build/bin" ]; then mkdir -p build/bin; fi
 	$(CC) $? -o $@
 	@echo "Finished Making Kewetext"
 
