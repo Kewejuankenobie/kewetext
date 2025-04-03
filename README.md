@@ -14,10 +14,10 @@ Kilo was written by Salvatore Sanfilippo aka antirez and is released
 under the BSD 2 clause license.
 
 This text editor extends [antirez's kilo](https://github.com/antirez/kilo)
-with a bunch of new features. The editor has no extra dependencies,
+with a bunch of new features. The editor has no extra dependencies
 and implements all basic features contained within a text editor,
-plus custom syntax highlighting, search functionality, copy / paste fucntions,
-and undo / redo support. Plenty of features can be configured with the
+plus custom syntax highlighting, search functionality, copy/paste functions,
+and undo/redo support. Plenty of features can be configured with the
 kewetextrc file.
 
 ## Installation
@@ -73,7 +73,7 @@ To open a file with Kewetext, run:
 ```shell
 kewetext <file>
 ```
-To run Kewetext with a a new file, run:
+To run Kewetext with a new file, run:
 ```shell
 kewetext
 ```
@@ -101,7 +101,7 @@ Configuration of Kewetext's settings can be done in:
 ~/.config/kewetextrc
 ```
 
-In here, you can edit settings regarding the editors functionality, 
+In here, you can edit settings regarding the editor's functionality, 
 plus color and syntax highlighting customization settings. More details
 about these settings are located in the provided kewetextrc file.
 
@@ -116,4 +116,4 @@ the original [kilo](https://github.com/antirez/kilo) was built by
 
 ## License
 
-This project is distrubuted under the BSD-2 Clause license.
+This project is distributed under the BSD-2 Clause license.
