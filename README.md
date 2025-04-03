@@ -44,14 +44,28 @@ most recent release or by cloning the repository:
 git clone https://github.com/Kewejuankenobie/kewetext.git
 ```
 Next, navigate to this directory and run these commands to build and install to the 
-`/usr/bin` directory:
+`/usr/local/bin` directory (`make install` will ask for sudo privileges
+because of the installation location):
 
 ```shell
 make
 make install
 ```
 
-This should allow the editor to be run on the current users account.
+This should allow the editor to be run across the system.
+
+Uninstalling Kewetext will Remove it from the `/usr/local/bin` directory
+and will prompt you for sudo privileges. The `kewetextrc` file
+will remain in the `~/.config` directory. To uninstall, type:
+
+```shell
+make uninstall
+```
+
+To remove files built by the Makefile, run:
+```shell
+make clean
+```
 
 ## Usage
 

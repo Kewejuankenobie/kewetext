@@ -31,8 +31,10 @@ install:
   		mkdir $(HOME)/.config; \
   	fi
 	cp kewetextrc $(HOME)/.config/kewetextrc
+	@echo "Successfully Installed Kewetext"
 .PHONY: install
 
 uninstall:
 	sudo rm /usr/local/bin/kewetext
+	@echo "Uninstalled Kewetext"
 .PHONY: uninstall
